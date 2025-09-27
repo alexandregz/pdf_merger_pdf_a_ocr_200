@@ -1,6 +1,6 @@
 # Combinador de PDFs
 
-Xunta PDFs nun só segundos os requerimentos dos xulgados
+Xunta PDFs nun só según os requerimentos dos xulgados
 
 ## Requerimentos legais previos
 
