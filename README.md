@@ -6,7 +6,7 @@ Xunta PDFs nun só según os requerimentos dos xulgados
 
 - Característica de OCR
 - Formato PDF/A
-- Resolución: 200x200x
+- Resolución: 200 PPI
 - O documento non pode pesar mais de 4 gigas
 
 
