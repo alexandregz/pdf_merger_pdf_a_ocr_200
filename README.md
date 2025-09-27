@@ -70,3 +70,35 @@ Xunta PDFs nun só según os requerimentos dos xulgados
 
 - **Windows**: control de todas as dependencias, o usuario non debe ter que instalar nada.
 - Engadir identidade corporativa (Iconos e demais identidade da CIG)
+
+## Capturas de pantalla
+
+![lanzar app](imaxes/001%20lanzar.png)
+
+![drag&drop de ficheiros](imaxes/002%20draganddrop.png)
+
+![xerar](imaxes/003%20xerar.png)
+
+![documento de destino](imaxes/004%20destino.png)
+
+![xerando](imaxes/005%20xerando.png)
+
+![xerado documento final](imaxes/006%20xerado.png)
+
+![comprobación de formato PDF-A](imaxes/007%20comprobacion.png)
+
+
+#### Como reordenar
+
+Pinchas nas dúas linhas e reordena o ficheiro:
+
+![reordenar](imaxes/008%20reordenar.png)
+
+
+#### Como eliminar
+
+Para eliminar un ficheiro do documento final, simplemente pincha na cruz á dereito do mesmo ficheiro:
+
+![eliminar](imaxes/009%20eliminar%20ficheiro.png)
+
+![eliminado](imaxes/010%20eliminar%20ficheiro.png)
