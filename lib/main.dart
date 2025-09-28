@@ -62,11 +62,11 @@ class _MinimalHomeState extends State<MinimalHome> {
     final ts = DateTime.now().toIso8601String().substring(11, 19);
     final line = s.endsWith('\n') ? s : ('$s\n');
     setState(() => _log += '[$ts] $line');
-    // modal
+    // duplicar log no modal se está aberto
     _activeCtrl?.append('[$ts] $line');
   }
 
-  // ========================= Helpers PATH/login shell & exec (Olho, macos!) =========================
+  // ========================= Helpers PATH/login shell & exec =========================
 
   String get _userShell => Platform.environment['SHELL'] ?? '/bin/zsh';
 
@@ -77,12 +77,14 @@ class _MinimalHomeState extends State<MinimalHome> {
 
   String _sh(String s) => "'${s.replaceAll("'", r"'\''")}'";
 
-  // Fallback robusto: intenta exec directo; se EPERM, executa vía login shell
-  Future<ProcessResult> _runWithFallback(String exeAbs, List<String> args) async {
+  // Fallback robusto: intenta exec directo; se falla por EPERM, executa vía login shell
+  Future<ProcessResult> _runWithFallback(
+      String exeAbs, List<String> args) async {
     try {
       return await Process.run(exeAbs, args);
     } on ProcessException catch (e) {
-      final msg = e.message.toLowerCase();
+      final msg =
+          (e.message).toLowerCase(); // evitar uso de osError por compat.
       if (msg.contains('operation not permitted') || msg.contains('eperm')) {
         final cmd = [_sh(exeAbs), ...args.map(_sh)].join(' ');
         return await _runInLoginShell(cmd);
@@ -101,8 +103,8 @@ class _MinimalHomeState extends State<MinimalHome> {
     }
     const candidates = [
       '/opt/homebrew/bin', // Apple Silicon (Homebrew)
-      '/usr/local/bin',    // Intel (Homebrew)
-      '/opt/local/bin',    // MacPorts
+      '/usr/local/bin', // Intel (Homebrew)
+      '/opt/local/bin', // MacPorts
       '/usr/bin', '/bin',
       '/Library/Frameworks/Python.framework/Versions/3.12/bin',
       '/Library/Frameworks/Python.framework/Versions/3.11/bin',
@@ -118,23 +120,31 @@ class _MinimalHomeState extends State<MinimalHome> {
 
   Future<bool> _resolveToolsAndCheckVersions() async {
     _logAdd('Resolvéndose rutas das ferramentas co PATH do usuario...');
-    _tool['qpdf']      = (await _which('qpdf')) ?? '';
-    _tool['ocrmypdf']  = (await _which('ocrmypdf')) ?? '';
+    _tool['qpdf'] = (await _which('qpdf')) ?? '';
+    _tool['ocrmypdf'] = (await _which('ocrmypdf')) ?? '';
     _tool['tesseract'] = (await _which('tesseract')) ?? '';
-    _tool['gs']        = (await _which('gs')) ?? '';
+    _tool['gs'] = (await _which('gs')) ?? '';
 
-    _logAdd('qpdf      -> ${_tool['qpdf']!.isEmpty ? 'NON ATOPADO' : _tool['qpdf']}');
-    _logAdd('ocrmypdf  -> ${_tool['ocrmypdf']!.isEmpty ? 'NON ATOPADO' : _tool['ocrmypdf']}');
-    _logAdd('tesseract -> ${_tool['tesseract']!.isEmpty ? 'NON ATOPADO' : _tool['tesseract']}');
-    _logAdd('gs        -> ${_tool['gs']!.isEmpty ? 'NON ATOPADO' : _tool['gs']}');
+    _logAdd(
+        'qpdf      -> ${_tool['qpdf']!.isEmpty ? 'NON ATOPADO' : _tool['qpdf']}');
+    _logAdd(
+        'ocrmypdf  -> ${_tool['ocrmypdf']!.isEmpty ? 'NON ATOPADO' : _tool['ocrmypdf']}');
+    _logAdd(
+        'tesseract -> ${_tool['tesseract']!.isEmpty ? 'NON ATOPADO' : _tool['tesseract']}');
+    _logAdd(
+        'gs        -> ${_tool['gs']!.isEmpty ? 'NON ATOPADO' : _tool['gs']}');
 
     Future<bool> tryVersion(String key) async {
       final exe = _tool[key]!;
       if (exe.isEmpty) return false;
       try {
         final r = await _runWithFallback(exe, ['--version']);
-        final first = (r.stdout is String ? r.stdout as String : '').split('\n').first.trim();
-        _logAdd('[$key --version] exit=${r.exitCode}${first.isNotEmpty ? ' · ' + first : ''}');
+        final first = (r.stdout is String ? r.stdout as String : '')
+            .split('\n')
+            .first
+            .trim();
+        _logAdd(
+            '[$key --version] exit=${r.exitCode}${first.isNotEmpty ? ' · ' + first : ''}');
         return r.exitCode == 0;
       } catch (e) {
         _logAdd('Erro lanzando $exe --version: $e');
@@ -148,7 +158,9 @@ class _MinimalHomeState extends State<MinimalHome> {
     await tryVersion('gs');
 
     final ok = okQ && okO;
-    if (!ok) _logAdd('Ferramentas obrigatorias non listas (precísanse qpdf e ocrmypdf).');
+    if (!ok)
+      _logAdd(
+          'Ferramentas obrigatorias non listas (precísanse qpdf e ocrmypdf).');
     return ok;
   }
 
@@ -175,154 +187,181 @@ class _MinimalHomeState extends State<MinimalHome> {
     }
   }
 
+  Future<bool> _runSilent(String key, List<String> args) async {
+    final exe = _tool[key] ?? '';
+    if (exe.isEmpty) return false;
+    try {
+      final r = await _runWithFallback(exe, args);
+      return r.exitCode == 0;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  // ============================== Utilidade modal ==============================
+
+  void _endModal({bool ok = false}) {
+    if (_activeCtrl == null) return;
+
+    if (ok) {
+      _activeCtrl!.finishOk();
+    } else {
+      _activeCtrl!.finishError();
+    }
+    _activeCtrl = null;
+  }
 
   // ============================== Fluxo principal UI ==============================
 
   Future<void> _pickFiles() async {
-    //_logAdd('Abrindo diálogo para seleccionar PDFs...');
+    _logAdd('Abrindo diálogo para seleccionar PDFs...');
     final typeGroup = XTypeGroup(label: 'PDFs', extensions: ['pdf']);
     final result = await openFiles(acceptedTypeGroups: [typeGroup]);
     if (result.isEmpty) {
-      //_logAdd('Non se seleccionou ningún ficheiro.');
+      _logAdd('Non se seleccionou ningún ficheiro.');
       return;
     }
     setState(() => _files.addAll(result.map((x) => File(x.path))));
-    //_logAdd('Engadidos ${result.length} PDF(s).');
+    _logAdd('Engadidos ${result.length} PDF(s).');
   }
 
   Future<void> _generate() async {
-    //_logAdd('--- PREMEU "Xerar PDF" ---');
+    _logAdd('--- PREMEU "Xerar PDF" ---');
     if (_files.isEmpty) {
       _logAdd('Lista baleira: arrastra PDFs ou preme Engadir.');
       return;
     }
 
-    // --- [MODAL - engadido] abrir modal bloqueante con spinner e log en tempo real ---
-    // --- Mostrar modal de progreso de inmediato ao colocalo aqui ---
+    // Mostrar modal de inmediato
     final ctrl = TaskProgressController();
     _activeCtrl = ctrl;
-    // non agardes ao peche: que apareza xa
     // ignore: unawaited_futures
     showProgressLogDialog(context, ctrl, title: 'Xerando PDF…');
-
-    // cede un frame para que a modal se pinte antes de comezar traballos
-    await Future.delayed(const Duration(milliseconds: 16));
-
-
-    // 0) resolver rutas e validar --version
-    final toolsOk = await _resolveToolsAndCheckVersions();
-    if (!toolsOk) return;
-
-    // Estimación (suma * 1.2)
-    final int sum = _files.fold<int>(
-        0, (s, f) => s + (f.existsSync() ? f.lengthSync() : 0));
-    final int estimate = (sum * 1.2).toInt();
-    _logAdd('Estimación de tamaño tras OCR ~ ${_fmt(estimate)} (sumados ${_fmt(sum)}).');
-    if (estimate > fourGB) {
-      _logAdd('Estimación supera 4GB. Abortando.');
-      return;
-    }
-
-    final location =
-        await getSaveLocation(suggestedName: 'documento_final.pdf');
-    if (location == null) {
-      //_logAdd('Cancelado polo usuario (non se escolleu destino).');
-      return;
-    }
-    final savePath = location.path;
-
-    setState(() {
-      _busy = true;
-      _progress = 0.01;
-    });
-
-
-
-    //final swTotal = Stopwatch()..start(); // se comentamos _logAdd(${swTotal.elapsed}) ==> comentamos isto
-    final tmp = await Directory.systemTemp.createTemp('pdfmerge_min_');
-    final mergedRaw = p.join(tmp.path, 'merged_raw.pdf');
-    final mergedFinal = p.join(tmp.path, 'merged_final.pdf');
+    await Future.delayed(
+        const Duration(milliseconds: 16)); // dar un frame para pintar o modal
 
     try {
-      // 1) Merge con qpdf
-      _logAdd('Unindo con qpdf...');
-      setState(() => _progress = 0.2);
-      final qpdfArgs = [
-        '--empty',
-        '--pages',
-        ..._files.map((f) => f.path),
-        '--',
-        mergedRaw
-      ];
-      //_logAdd('CMD: qpdf ${qpdfArgs.join(' ')}');
-      final sw = Stopwatch()..start();
-      final okMerge = await _run('qpdf', qpdfArgs);
-      _logAdd('qpdf durou ${sw.elapsed}');
-      if (!okMerge) {
-        _logAdd('qpdf fallou. Abortando.');
+      // 0) resolver rutas e validar --version
+      final toolsOk = await _resolveToolsAndCheckVersions();
+      if (!toolsOk) {
+        _endModal(ok: false); // <- habilitar botón Pechar e parar spinner
         return;
       }
 
-      // 2) Límite 4GB despois de unir
-      final mSize = File(mergedRaw).lengthSync();
-      _logAdd('Tamaño tras unión: ${_fmt(mSize)}');
-      if (mSize > fourGB) {
-        _logAdd('O unido supera 4GB. Abortando.');
+      // Estimación (suma * 1.2)
+      final int sum = _files.fold<int>(
+          0, (s, f) => s + (f.existsSync() ? f.lengthSync() : 0));
+      final int estimate = (sum * 1.2).toInt();
+      _logAdd(
+          'Estimación de tamaño tras OCR ~ ${_fmt(estimate)} (sumados ${_fmt(sum)}).');
+      if (estimate > fourGB) {
+        _logAdd('Estimación supera 4GB. Abortando.');
+        _endModal(ok: false);
         return;
       }
 
-      // 3) OCR + PDF/A + 200 dpi con ocrmypdf
-      _logAdd('Aplicando OCR + PDF/A (200 dpi) ...');
-      setState(() => _progress = 0.6);
-      final ocrArgs = [
-        '--output-type',
-        'pdfa',
-        '--optimize',
-        '3',
-        '--pdfa-image-compression',
-        'lossless',
-        '--jobs',
-        Platform.numberOfProcessors.toString(),
-        '--redo-ocr',
-        '--oversample',
-        '200',
-        mergedRaw,
-        mergedFinal,
-      ];
-      //_logAdd('CMD: ocrmypdf ${ocrArgs.join(' ')}');
-      final sw2 = Stopwatch()..start();
-      final okOcr = await _run('ocrmypdf', ocrArgs);
-      _logAdd('ocrmypdf durou ${sw2.elapsed}');
-      if (!okOcr) {
-        _logAdd('ocrmypdf fallou. Abortando.');
+      final location =
+          await getSaveLocation(suggestedName: 'documento_final.pdf');
+      if (location == null) {
+        _logAdd('Cancelado polo usuario (non se escolleu destino).');
+        _endModal(ok: false);
         return;
       }
+      final savePath = location.path;
 
-      // 4) Límite final e gardar
-      final fSize = File(mergedFinal).lengthSync();
-      _logAdd('Tamaño final: ${_fmt(fSize)}');
-      if (fSize > fourGB) {
-        _logAdd('Resultado supera 4GB. Non se gardará.');
-        return;
-      }
-
-      await File(mergedFinal).copy(savePath);
-      //_logAdd('Feito en ${swTotal.elapsed}. Gardado en: $savePath');
-    } catch (e, st) {
-      _logAdd('Erro: $e');
-      _logAdd(st.toString());
-    } finally {
-      try {
-        await tmp.delete(recursive: true);
-      } catch (_) {}
       setState(() {
-        _busy = false;
-        _progress = 0.0;
+        _busy = true;
+        _progress = 0.01;
       });
 
-      // --- [MODAL - engadido] rematar modal e limpar referencia ---
-    _activeCtrl?.finish();
-    _activeCtrl = null;
+      final swTotal = Stopwatch()..start();
+      final tmp = await Directory.systemTemp.createTemp('pdfmerge_min_');
+      final mergedRaw = p.join(tmp.path, 'merged_raw.pdf');
+      final mergedFinal = p.join(tmp.path, 'merged_final.pdf');
+
+      try {
+        // 1) Merge con qpdf...
+        setState(() => _progress = 0.2);
+        final qpdfArgs = [
+          '--empty',
+          '--pages',
+          ..._files.map((f) => f.path),
+          '--',
+          mergedRaw
+        ];
+        // _logAdd('CMD: qpdf ${qpdfArgs.join(' ')}');
+        final sw = Stopwatch()..start();
+        final okMerge = await _run('qpdf', qpdfArgs);
+        _logAdd('qpdf durou ${sw.elapsed}');
+        if (!okMerge) {
+          _logAdd('qpdf fallou. Abortando.');
+          _endModal(ok: false);
+          return;
+        }
+
+        // 2) Límite 4GB despois de unir
+        final mSize = File(mergedRaw).lengthSync();
+        _logAdd('Tamaño tras unión: ${_fmt(mSize)}');
+        if (mSize > fourGB) {
+          _logAdd('O unido supera 4GB. Abortando.');
+          _endModal(ok: false);
+          return;
+        }
+
+        // 3) OCR + PDF/A + 200 dpi con ocrmypdf ...
+        setState(() => _progress = 0.6);
+        final ocrArgs = [
+          '--output-type',
+          'pdfa',
+          '--optimize',
+          '3',
+          '--pdfa-image-compression',
+          'lossless',
+          '--jobs',
+          Platform.numberOfProcessors.toString(),
+          '--redo-ocr',
+          '--oversample',
+          '200',
+          mergedRaw,
+          mergedFinal,
+        ];
+        // _logAdd('CMD: ocrmypdf ${ocrArgs.join(' ')}');
+        final sw2 = Stopwatch()..start();
+        final okOcr = await _run('ocrmypdf', ocrArgs);
+        _logAdd('ocrmypdf durou ${sw2.elapsed}');
+        if (!okOcr) {
+          _logAdd('ocrmypdf fallou. Abortando.');
+          _endModal(ok: false);
+          return;
+        }
+
+        // 4) Límite final e gardar
+        final fSize = File(mergedFinal).lengthSync();
+        _logAdd('Tamaño final: ${_fmt(fSize)}');
+        if (fSize > fourGB) {
+          _logAdd('Resultado supera 4GB. Non se gardará.');
+          _endModal(ok: false);
+          return;
+        }
+
+        await File(mergedFinal).copy(savePath);
+        _logAdd('Feito en ${swTotal.elapsed}. Gardado en: $savePath');
+        _endModal(ok: true);
+      } catch (e, st) {
+        _logAdd('Erro: $e');
+        _logAdd(st.toString());
+      } finally {
+        try {
+          await tmp.delete(recursive: true);
+        } catch (_) {}
+        setState(() {
+          _busy = false;
+          _progress = 0.0;
+        });
+      }
+    } finally {
+      // En calquera caso, se non se pechou xa, pecha a modal
+      _endModal();
     }
   }
 
@@ -407,11 +446,11 @@ class _MinimalHomeState extends State<MinimalHome> {
                                 setState(() => _dragging = false),
                             onDragDone: (d) {
                               setState(() => _files.addAll(d.files
-                                  .where((f) => f.path
-                                      .toLowerCase()
-                                      .endsWith('.pdf'))
+                                  .where((f) =>
+                                      f.path.toLowerCase().endsWith('.pdf'))
                                   .map((f) => File(f.path))));
-                              //_logAdd('Arrastrados ${d.files.length} elemento(s).');
+                              _logAdd(
+                                  'Arrastrados ${d.files.length} elemento(s).');
                             },
                             child: AnimatedContainer(
                               duration: const Duration(milliseconds: 150),
@@ -429,13 +468,13 @@ class _MinimalHomeState extends State<MinimalHome> {
                                     if (n > o) n--;
                                     final it = _files.removeAt(o);
                                     _files.insert(n, it);
-                                    //_logAdd('Reordenado $o -> $n');
+                                    _logAdd('Reordenado $o -> $n');
                                   });
                                 },
                                 itemBuilder: (c, i) {
                                   final f = _files[i];
-                                  final size = _fmt(
-                                      f.existsSync() ? f.lengthSync() : 0);
+                                  final size =
+                                      _fmt(f.existsSync() ? f.lengthSync() : 0);
                                   return ListTile(
                                     key: ValueKey(f.path),
                                     leading: const Icon(Icons.picture_as_pdf),
@@ -485,13 +524,16 @@ class _MinimalHomeState extends State<MinimalHome> {
   }
 }
 
+// ======================== utilidade de modal bloqueante ========================
 
-// ======================== [ENGADIDO] utilidade de modal bloqueante ========================
+/// Estados posibles do proceso (para o modal)
+enum TaskState { working, doneOk, doneError }
 
 /// Controlador simple para enviar mensaxes ao modal e marcar cando remata.
 class TaskProgressController {
   final ValueNotifier<String> log = ValueNotifier<String>('');
-  final ValueNotifier<bool> done = ValueNotifier<bool>(false);
+  final ValueNotifier<TaskState> state =
+      ValueNotifier<TaskState>(TaskState.working);
 
   /// Engade unha liña ao log (con salto final se falta).
   void append(String s) {
@@ -499,15 +541,20 @@ class TaskProgressController {
     log.value = log.value + line;
   }
 
-  /// Marca o proceso como finalizado (activa botón Pechar).
-  void finish() {
-    done.value = true;
+  /// Marca proceso como finalizado OK.
+  void finishOk() {
+    state.value = TaskState.doneOk;
+  }
+
+  /// Marca proceso como finalizado con ERRO.
+  void finishError() {
+    state.value = TaskState.doneError;
   }
 
   /// (Opcional) Limpa para unha nova execución.
   void reset() {
     log.value = '';
-    done.value = false;
+    state.value = TaskState.working;
   }
 }
 
@@ -588,16 +635,22 @@ class _ProgressLogDialogState extends State<_ProgressLogDialog> {
               padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
               child: Row(
                 children: [
-                  ValueListenableBuilder<bool>(
-                    valueListenable: widget.controller.done,
-                    builder: (_, done, __) {
-                      return done
-                          ? const Icon(Icons.check_circle, color: Colors.green)
-                          : const SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(strokeWidth: 3),
-                            );
+                  ValueListenableBuilder<TaskState>(
+                    valueListenable: widget.controller.state,
+                    builder: (_, st, __) {
+                      switch (st) {
+                        case TaskState.working:
+                          return const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 3),
+                          );
+                        case TaskState.doneOk:
+                          return const Icon(Icons.check_circle,
+                              color: Colors.green);
+                        case TaskState.doneError:
+                          return const Icon(Icons.cancel, color: Colors.red);
+                      }
                     },
                   ),
                   const SizedBox(width: 12),
@@ -648,11 +701,13 @@ class _ProgressLogDialogState extends State<_ProgressLogDialog> {
               child: Row(
                 children: [
                   const Spacer(),
-                  ValueListenableBuilder<bool>(
-                    valueListenable: widget.controller.done,
-                    builder: (_, done, __) {
+                  ValueListenableBuilder<TaskState>(
+                    valueListenable: widget.controller.state,
+                    builder: (_, st, __) {
+                      final done = st != TaskState.working;
                       return FilledButton.icon(
-                        onPressed: done ? () => Navigator.of(context).pop() : null,
+                        onPressed:
+                            done ? () => Navigator.of(context).pop() : null,
                         icon: const Icon(Icons.close),
                         label: const Text('Pechar'),
                       );
