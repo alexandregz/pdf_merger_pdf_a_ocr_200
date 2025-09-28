@@ -11,10 +11,10 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await windowManager.ensureInitialized();
 
-  // 👇 Cambiar título da xanela
+  // Cambiar título da xanela
   await windowManager.setTitle('CIG Combinador PDF - OCR · PDF/A');
 
-  // 👇 Fixar tamaño mínimo da xanela
+  // Fixar tamaño mínimo da xanela
   await windowManager.setMinimumSize(const Size(900, 600));
 
   runApp(const App());
@@ -58,12 +58,36 @@ class _MinimalHomeState extends State<MinimalHome> {
     'gs': '',
   };
 
+  // Autoscroll Log
+  late final ScrollController _logScroll;
+
+  @override
+  void initState() {
+    super.initState();
+    _logScroll = ScrollController();
+  }
+
+  @override
+  void dispose() {
+    _logScroll.dispose();
+    super.dispose();
+  }
+  // ----------------------------------
+
   void _logAdd(String s) {
     final ts = DateTime.now().toIso8601String().substring(11, 19);
     final line = s.endsWith('\n') ? s : ('$s\n');
     setState(() => _log += '[$ts] $line');
     // duplicar log no modal se está aberto
     _activeCtrl?.append('[$ts] $line');
+
+    // Autoscroll Log
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_logScroll.hasClients) {
+        _logScroll.jumpTo(_logScroll.position.maxScrollExtent);
+        // Se prefires suave: _logScroll.animateTo(...);
+      }
+    });
   }
 
   // ========================= Helpers PATH/login shell & exec =========================
@@ -449,8 +473,7 @@ class _MinimalHomeState extends State<MinimalHome> {
                                   .where((f) =>
                                       f.path.toLowerCase().endsWith('.pdf'))
                                   .map((f) => File(f.path))));
-                              _logAdd(
-                                  'Arrastrados ${d.files.length} elemento(s).');
+                              //_logAdd('Arrastrados ${d.files.length} elemento(s).');
                             },
                             child: AnimatedContainer(
                               duration: const Duration(milliseconds: 150),
@@ -468,7 +491,7 @@ class _MinimalHomeState extends State<MinimalHome> {
                                     if (n > o) n--;
                                     final it = _files.removeAt(o);
                                     _files.insert(n, it);
-                                    _logAdd('Reordenado $o -> $n');
+                                    //_logAdd('Reordenado $o -> $n');
                                   });
                                 },
                                 itemBuilder: (c, i) {
@@ -506,6 +529,7 @@ class _MinimalHomeState extends State<MinimalHome> {
                         const ListTile(dense: true, title: Text('Log')),
                         Expanded(
                           child: SingleChildScrollView(
+                            controller: _logScroll,
                             padding: const EdgeInsets.all(12),
                             child: SelectableText(
                                 _log.isEmpty ? 'Sen log.' : _log),
