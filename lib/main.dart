@@ -214,7 +214,7 @@ class _MinimalHomeState extends State<MinimalHome> {
   // ============================== Fluxo principal UI ==============================
 
   Future<void> _pickFiles() async {
-    _logAdd('Abrindo diálogo para seleccionar PDFs...');
+    //_logAdd('Abrindo diálogo para seleccionar PDFs...');
     final typeGroup = XTypeGroup(label: 'PDFs', extensions: ['pdf']);
     final result = await openFiles(acceptedTypeGroups: [typeGroup]);
     if (result.isEmpty) {
@@ -226,7 +226,7 @@ class _MinimalHomeState extends State<MinimalHome> {
   }
 
   Future<void> _generate() async {
-    _logAdd('--- PREMEU "Xerar PDF" ---');
+    //_logAdd('--- PREMEU "Xerar PDF" ---');
     if (_files.isEmpty) {
       _logAdd('Lista baleira: arrastra PDFs ou preme Engadir.');
       return;
@@ -387,7 +387,7 @@ class _MinimalHomeState extends State<MinimalHome> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Unir PDF · OCR · PDF/A (200 dpi)'),
+        title: const Text('Unir PDF [Resultado: OCR · PDF/A (200 dpi)]'),
         centerTitle: true,
       ),
       body: Column(
@@ -570,7 +570,7 @@ Future<void> showProgressLogDialog(
     context: context,
     barrierDismissible: false,
     barrierLabel: 'Progreso',
-    barrierColor: Colors.black.withOpacity(0.6), // fondo escurecido
+    barrierColor: Colors.black.withValues(alpha: 0.6), // fondo escurecido
     transitionDuration: const Duration(milliseconds: 120),
     pageBuilder: (context, anim1, anim2) {
       return Center(
