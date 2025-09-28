@@ -32,6 +32,8 @@ class _MinimalHomeState extends State<MinimalHome> {
   bool _busy = false;
   double _progress = 0.0;
   String _log = '';
+  // --- [MODAL LOG - engadido] controlador do modal activo (se existe) ---
+  TaskProgressController? _activeCtrl;
 
   static const int fourGB = 4 * 1024 * 1024 * 1024; // 4 GiB
 
@@ -47,6 +49,8 @@ class _MinimalHomeState extends State<MinimalHome> {
     final ts = DateTime.now().toIso8601String().substring(11, 19);
     final line = s.endsWith('\n') ? s : ('$s\n');
     setState(() => _log += '[$ts] $line');
+    // modal
+    _activeCtrl?.append('[$ts] $line');
   }
 
   // ========================= Helpers PATH/login shell & exec (Olho, macos!) =========================
@@ -207,6 +211,15 @@ class _MinimalHomeState extends State<MinimalHome> {
       _progress = 0.01;
     });
 
+
+    // --- [MODAL - engadido] abrir modal bloqueante con spinner e log en tempo real ---
+    final _tmpCtrl = TaskProgressController();
+    _activeCtrl = _tmpCtrl;
+    // non agardar, o modal queda aberto mentres executa:
+    // ignore: unawaited_futures
+    showProgressLogDialog(context, _tmpCtrl, title: 'Xerando PDF…');
+
+
     //final swTotal = Stopwatch()..start(); // se comentamos _logAdd(${swTotal.elapsed}) ==> comentamos isto
     final tmp = await Directory.systemTemp.createTemp('pdfmerge_min_');
     final mergedRaw = p.join(tmp.path, 'merged_raw.pdf');
@@ -288,6 +301,10 @@ class _MinimalHomeState extends State<MinimalHome> {
         _busy = false;
         _progress = 0.0;
       });
+
+      // --- [MODAL - engadido] rematar modal e limpar referencia ---
+    _activeCtrl?.finish();
+    _activeCtrl = null;
     }
   }
 
@@ -445,6 +462,189 @@ class _MinimalHomeState extends State<MinimalHome> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+
+// ======================== [ENGADIDO] utilidade de modal bloqueante ========================
+
+/// Controlador simple para enviar mensaxes ao modal e marcar cando remata.
+class TaskProgressController {
+  final ValueNotifier<String> log = ValueNotifier<String>('');
+  final ValueNotifier<bool> done = ValueNotifier<bool>(false);
+
+  /// Engade unha liña ao log (con salto final se falta).
+  void append(String s) {
+    final line = s.endsWith('\n') ? s : '$s\n';
+    log.value = log.value + line;
+  }
+
+  /// Marca o proceso como finalizado (activa botón Pechar).
+  void finish() {
+    done.value = true;
+  }
+
+  /// (Opcional) Limpa para unha nova execución.
+  void reset() {
+    log.value = '';
+    done.value = false;
+  }
+}
+
+/// Mostra un modal bloqueante cun log en tempo real.
+/// - Escurece o fondo e bloquea toda a app.
+/// - Non permite pechar ata que `controller.done.value == true` (aparece botón Pechar).
+Future<void> showProgressLogDialog(
+  BuildContext context,
+  TaskProgressController controller, {
+  String title = 'Procesando…',
+}) {
+  return showGeneralDialog<void>(
+    context: context,
+    barrierDismissible: false,
+    barrierLabel: 'Progreso',
+    barrierColor: Colors.black.withOpacity(0.6), // fondo escurecido
+    transitionDuration: const Duration(milliseconds: 120),
+    pageBuilder: (context, anim1, anim2) {
+      return Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 720, maxHeight: 520),
+          child: _ProgressLogDialog(title: title, controller: controller),
+        ),
+      );
+    },
+  );
+}
+
+class _ProgressLogDialog extends StatefulWidget {
+  const _ProgressLogDialog({required this.title, required this.controller});
+  final String title;
+  final TaskProgressController controller;
+
+  @override
+  State<_ProgressLogDialog> createState() => _ProgressLogDialogState();
+}
+
+class _ProgressLogDialogState extends State<_ProgressLogDialog> {
+  final ScrollController _scroll = ScrollController();
+
+  @override
+  void initState() {
+    super.initState();
+    widget.controller.log.addListener(_autoScroll);
+  }
+
+  @override
+  void dispose() {
+    widget.controller.log.removeListener(_autoScroll);
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  void _autoScroll() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_scroll.hasClients) return;
+      _scroll.animateTo(
+        _scroll.position.maxScrollExtent,
+        duration: const Duration(milliseconds: 120),
+        curve: Curves.easeOut,
+      );
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      elevation: 20,
+      borderRadius: BorderRadius.circular(16),
+      clipBehavior: Clip.antiAlias,
+      child: Container(
+        color: Theme.of(context).colorScheme.surface,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Cabeceira
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
+              child: Row(
+                children: [
+                  ValueListenableBuilder<bool>(
+                    valueListenable: widget.controller.done,
+                    builder: (_, done, __) {
+                      return done
+                          ? const Icon(Icons.check_circle, color: Colors.green)
+                          : const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(strokeWidth: 3),
+                            );
+                    },
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      widget.title,
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Divider(height: 1),
+            // Corpo: área de log
+            Expanded(
+              child: ValueListenableBuilder<String>(
+                valueListenable: widget.controller.log,
+                builder: (_, logText, __) {
+                  final text = logText.isEmpty ? 'Inicializando…' : logText;
+                  return Container(
+                    color: Theme.of(context)
+                        .colorScheme
+                        .surfaceContainerHighest
+                        .withOpacity(0.4),
+                    padding: const EdgeInsets.all(12),
+                    child: Scrollbar(
+                      controller: _scroll,
+                      thumbVisibility: true,
+                      child: SingleChildScrollView(
+                        controller: _scroll,
+                        child: SelectableText(
+                          text,
+                          style: const TextStyle(
+                            fontFamily: 'monospace',
+                            height: 1.3,
+                          ),
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+            const Divider(height: 1),
+            // Pé: botón de pechar (só cando remata)
+            Padding(
+              padding: const EdgeInsets.all(12),
+              child: Row(
+                children: [
+                  const Spacer(),
+                  ValueListenableBuilder<bool>(
+                    valueListenable: widget.controller.done,
+                    builder: (_, done, __) {
+                      return FilledButton.icon(
+                        onPressed: done ? () => Navigator.of(context).pop() : null,
+                        icon: const Icon(Icons.close),
+                        label: const Text('Pechar'),
+                      );
+                    },
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
