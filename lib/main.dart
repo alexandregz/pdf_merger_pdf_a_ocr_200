@@ -4,8 +4,21 @@ import 'package:desktop_drop/desktop_drop.dart';
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
+import 'package:window_manager/window_manager.dart';
 
-void main() => runApp(const App());
+Future<void> main() async {
+  // Necesario para inicializar plugins antes de runApp
+  WidgetsFlutterBinding.ensureInitialized();
+  await windowManager.ensureInitialized();
+
+  // 👇 Cambiar título da xanela
+  await windowManager.setTitle('CIG Combinador PDF - OCR · PDF/A');
+
+  // 👇 Fixar tamaño mínimo da xanela
+  await windowManager.setMinimumSize(const Size(900, 600));
+
+  runApp(const App());
+}
 
 class App extends StatelessWidget {
   const App({super.key});
@@ -184,6 +197,18 @@ class _MinimalHomeState extends State<MinimalHome> {
       return;
     }
 
+    // --- [MODAL - engadido] abrir modal bloqueante con spinner e log en tempo real ---
+    // --- Mostrar modal de progreso de inmediato ao colocalo aqui ---
+    final ctrl = TaskProgressController();
+    _activeCtrl = ctrl;
+    // non agardes ao peche: que apareza xa
+    // ignore: unawaited_futures
+    showProgressLogDialog(context, ctrl, title: 'Xerando PDF…');
+
+    // cede un frame para que a modal se pinte antes de comezar traballos
+    await Future.delayed(const Duration(milliseconds: 16));
+
+
     // 0) resolver rutas e validar --version
     final toolsOk = await _resolveToolsAndCheckVersions();
     if (!toolsOk) return;
@@ -211,13 +236,6 @@ class _MinimalHomeState extends State<MinimalHome> {
       _progress = 0.01;
     });
 
-
-    // --- [MODAL - engadido] abrir modal bloqueante con spinner e log en tempo real ---
-    final _tmpCtrl = TaskProgressController();
-    _activeCtrl = _tmpCtrl;
-    // non agardar, o modal queda aberto mentres executa:
-    // ignore: unawaited_futures
-    showProgressLogDialog(context, _tmpCtrl, title: 'Xerando PDF…');
 
 
     //final swTotal = Stopwatch()..start(); // se comentamos _logAdd(${swTotal.elapsed}) ==> comentamos isto
