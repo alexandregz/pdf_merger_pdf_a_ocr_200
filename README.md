@@ -51,6 +51,14 @@ Xunta PDFs nun só según os requerimentos dos xulgados
 
 
 
+## Dependencias
+
+- **qpdf**: para unir PDFs na orde indicada, crea un merged_raw.pdf a partir da lista
+- **ocrmypdf**: orquestador do OCR e da conversión a PDF/A, chamando a `tesseract` e `gs`. Toma o merged_raw.pdf, fai OCR, mete capa de texto, converte a PDF/A e xera merged_final.pdf
+- **tesseract**: motor do OCR, chamado internamente por `ocrmypdf`
+- **gs**: empregado internamente por `ocrmypdf`.
+
+
 ## Notas desenvolvemento
 
 - en `macos` hai que saltarse o `sandbox` dos binarios, ou ben eliminando nos `.entitlements` os `com.apple.security.app-sandbox` ou empregando `xattr` directamente contra os binarios empregados
