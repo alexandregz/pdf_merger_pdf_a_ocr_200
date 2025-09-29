@@ -404,11 +404,11 @@ class _MinimalHomeState extends State<MinimalHome> {
           'lossless',
           '--jobs',
           Platform.numberOfProcessors.toString(),
-          '--redo-ocr',
+          '--skip-text',    // cambiamos --redo-ocr por --skip-text para non re-OCRizar páxinas que xa teñen capa de texto e aforrar tempo en PDFs grandes
           '--oversample',
           '200',
           '-v',             // engadido para máis verbosidade
-          '1',
+          '1',              // valor de -v
           mergedRaw,
           mergedFinal,
         ];
