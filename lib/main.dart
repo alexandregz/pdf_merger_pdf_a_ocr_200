@@ -1,4 +1,6 @@
 import 'dart:io';
+import 'dart:async'; // engadido para streaming ocrmypdf
+import 'dart:convert'; // engadido para decodificar stdout/stderr liña a liña
 
 import 'package:desktop_drop/desktop_drop.dart';
 import 'package:file_selector/file_selector.dart';
@@ -143,7 +145,7 @@ class _MinimalHomeState extends State<MinimalHome> {
   // ===================== Resolver ferramentas e --version =====================
 
   Future<bool> _resolveToolsAndCheckVersions() async {
-    _logAdd('Resolvéndose rutas das ferramentas co PATH do usuario...');
+    _logAdd('Resolvendo rutas das ferramentas co PATH do usuario...');
     _tool['qpdf'] = (await _which('qpdf')) ?? '';
     _tool['ocrmypdf'] = (await _which('ocrmypdf')) ?? '';
     _tool['tesseract'] = (await _which('tesseract')) ?? '';
@@ -218,6 +220,65 @@ class _MinimalHomeState extends State<MinimalHome> {
       final r = await _runWithFallback(exe, args);
       return r.exitCode == 0;
     } catch (_) {
+      return false;
+    }
+  }
+
+  // --- NOVO: execución streaming de ocrmypdf (verbosa + heartbeat 30s) ---
+  Future<bool> _runOcrmypdfStreaming(List<String> args) async {
+    final exe = _tool['ocrmypdf'] ?? '';
+    if (exe.isEmpty) {
+      _logAdd('Comando non resolto: ocrmypdf');
+      return false;
+    }
+
+    _logAdd('Exec (stream): $exe ${args.join(' ')}');
+
+    // Evitar que Python buferice a saída:
+    final env = Map<String, String>.from(Platform.environment)
+      ..putIfAbsent('PYTHONUNBUFFERED', () => '1');
+
+    Process? proc;
+    try {
+      proc = await Process.start(exe, args, environment: env);
+
+      DateTime last = DateTime.now();
+      final timer = Timer.periodic(const Duration(seconds: 30), (_) {
+        final secs = DateTime.now().difference(last).inSeconds;
+        if (secs >= 30) {
+          _logAdd('… ocrmypdf segue traballando (${secs}s sen novas liñas) …');
+        }
+      });
+
+      proc.stdout
+          .transform(utf8.decoder)
+          .transform(const LineSplitter())
+          .listen((line) {
+        last = DateTime.now();
+        if (line.trim().isNotEmpty) {
+          _logAdd('[stdout ocrmypdf] $line');
+        }
+      });
+
+      proc.stderr
+          .transform(utf8.decoder)
+          .transform(const LineSplitter())
+          .listen((line) {
+        last = DateTime.now();
+        if (line.trim().isNotEmpty) {
+          _logAdd('[stderr ocrmypdf] $line');
+        }
+      });
+
+      final code = await proc.exitCode;
+      timer.cancel();
+      _logAdd('ocrmypdf -> exitCode $code');
+      return code == 0;
+    } catch (e) {
+      _logAdd('Non se puido iniciar ocrmypdf en streaming: $e');
+      try {
+        await proc?.kill();
+      } catch (_) {}
       return false;
     }
   }
@@ -346,12 +407,14 @@ class _MinimalHomeState extends State<MinimalHome> {
           '--redo-ocr',
           '--oversample',
           '200',
+          '-v',             // engadido para máis verbosidade
+          '1',
           mergedRaw,
           mergedFinal,
         ];
         // _logAdd('CMD: ocrmypdf ${ocrArgs.join(' ')}');
         final sw2 = Stopwatch()..start();
-        final okOcr = await _run('ocrmypdf', ocrArgs);
+        final okOcr = await _runOcrmypdfStreaming(ocrArgs); // engadido (streaming)
         _logAdd('ocrmypdf durou ${sw2.elapsed}');
         if (!okOcr) {
           _logAdd('ocrmypdf fallou. Abortando.');
@@ -491,7 +554,7 @@ class _MinimalHomeState extends State<MinimalHome> {
                                     if (n > o) n--;
                                     final it = _files.removeAt(o);
                                     _files.insert(n, it);
-                                    //_logAdd('Reordenado $o -> $n');
+                                  //  _logAdd('Reordenado $o -> $n');
                                   });
                                 },
                                 itemBuilder: (c, i) {
@@ -529,7 +592,7 @@ class _MinimalHomeState extends State<MinimalHome> {
                         const ListTile(dense: true, title: Text('Log')),
                         Expanded(
                           child: SingleChildScrollView(
-                            controller: _logScroll,
+                            controller: _logScroll, // <-- AUTOSCROLL LOG
                             padding: const EdgeInsets.all(12),
                             child: SelectableText(
                                 _log.isEmpty ? 'Sen log.' : _log),
