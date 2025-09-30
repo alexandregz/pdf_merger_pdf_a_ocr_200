@@ -29,6 +29,7 @@ Xunta PDFs nun só según os requerimentos dos xulgados
 - [tesseract](https://github.com/tesseract-ocr/tesseract)
 - [gs](https://ghostscript.com/)
 
+NOTA: As dependencias en windows resólvense vía [**microbamba**](https://github.com/mamba-org/mamba)
 
 ## Notas de uso
 

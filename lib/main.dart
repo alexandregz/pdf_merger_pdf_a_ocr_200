@@ -1,3 +1,4 @@
+// lib/main.dart
 import 'dart:io';
 import 'dart:async'; // engadido para streaming ocrmypdf
 import 'dart:convert'; // engadido para decodificar stdout/stderr liña a liña
@@ -7,6 +8,9 @@ import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
 import 'package:window_manager/window_manager.dart';
+
+// <<< NOVO: módulo co bootstrap de micromamba >>>
+import 'mamba_boot.dart';
 
 Future<void> main() async {
   // Necesario para inicializar plugins antes de runApp
@@ -52,6 +56,12 @@ class _MinimalHomeState extends State<MinimalHome> {
 
   static const int fourGB = 4 * 1024 * 1024 * 1024; // 4 GiB
 
+  // --- Micromamba bootstrap (Windows) ---
+  String? _mmRoot; // %LOCALAPPDATA%\CIG\tools\mm
+  String? _mmBin; // %LOCALAPPDATA%\CIG\tools\mm\micromamba.exe
+  String? _mmEnvRoot; // %LOCALAPPDATA%\CIG\tools\mm\envs\ocr-env
+  String? _pythonExe; // %LOCALAPPDATA%\CIG\tools\mm\envs\ocr-env\python.exe
+
   // rutas resoltas das ferramentas
   final Map<String, String> _tool = {
     'qpdf': '',
@@ -87,17 +97,16 @@ class _MinimalHomeState extends State<MinimalHome> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_logScroll.hasClients) {
         _logScroll.jumpTo(_logScroll.position.maxScrollExtent);
-        // Se prefires suave: _logScroll.animateTo(...);
       }
     });
   }
 
   // ========================= Helpers PATH/login shell & exec =========================
-// Executa unha orde no shell de login real do usuario en Unix
-// e en Windows usa cmd.exe /C (non existe zsh nin -lc).
+
+  // Executa unha orde no shell de login real do usuario en Unix
+  // e en Windows usa cmd.exe /C (non existe zsh nin -lc).
   Future<ProcessResult> _runInLoginShell(String commandLine) {
     if (Platform.isWindows) {
-      // En Windows, deixa que cmd.exe resolva o PATH do usuario
       return Process.run('cmd.exe', ['/C', commandLine]);
     } else {
       final shell = Platform.environment['SHELL'] ?? '/bin/zsh';
@@ -125,34 +134,53 @@ class _MinimalHomeState extends State<MinimalHome> {
 
   // Resolve a ruta absoluta dun comando co login shell (command -v),
   // e con candidatos típicos (Homebrew/MacPorts/Python framework)
-// Resolve a ruta absoluta dun comando. En Windows usa `where`
-// (e tenta tamén nomes alternativos como gswin64c para Ghostscript).
+  // Resolve a ruta absoluta dun comando. En Windows usa `where`
+  // (e tenta tamén nomes alternativos como gswin64c para Ghostscript).
   Future<String?> _which(String name) async {
     if (Platform.isWindows) {
-      // Algúns binarios teñen nomes diferentes en Windows.
+      // --- PRIORIDADE: entorno micromamba se existe ---
+      _initMmPathsIfNeeded();
+      if (_mmEnvRoot != null) {
+        String? fromEnv(String exeName) {
+          final cands = <String>[
+            p.join(_mmEnvRoot!, 'Library', 'bin', exeName),
+            p.join(_mmEnvRoot!, 'Scripts', exeName),
+            p.join(_mmEnvRoot!, exeName),
+          ];
+          for (final f in cands) {
+            if (File(f).existsSync()) return f;
+          }
+          return null;
+        }
+
+        if (name.toLowerCase() == 'gs') {
+          final alt = fromEnv('gswin64c.exe') ?? fromEnv('gswin32c.exe');
+          if (alt != null) return alt;
+        }
+        final envExe = fromEnv('$name.exe') ?? fromEnv(name);
+        if (envExe != null) return envExe;
+      }
+
       final candidates = <String>[
-        if (name.toLowerCase() == 'gs') 'gswin64c', // Ghostscript
+        if (name.toLowerCase() == 'gs') 'gswin64c',
         name,
       ];
 
-      // 1) Proba con `where` (respecta o PATH real do usuario).
+      // 1) where
       for (final n in candidates) {
         try {
           final r = await Process.run('where', [n], runInShell: true);
           if (r.exitCode == 0) {
             final out = (r.stdout as String).trim();
             if (out.isNotEmpty) {
-              // colle a primeira ruta válida
               final first = out.split(RegExp(r'\r?\n')).first.trim();
               if (first.isNotEmpty && File(first).existsSync()) return first;
             }
           }
-        } catch (_) {
-          // Ignora, tentamos fallbacks
-        }
+        } catch (_) {}
       }
 
-      // 2) Pequenos fallbacks típicos (chocolatey/scoop/Python scripts)
+      // 2) fallbacks típicos
       final env = Platform.environment;
       String? user = env['USERPROFILE'] ??
           ((env['HOMEDRIVE'] != null && env['HOMEPATH'] != null)
@@ -161,15 +189,11 @@ class _MinimalHomeState extends State<MinimalHome> {
 
       final extraDirs = <String>[
         r'C:\ProgramData\chocolatey\bin',
-        // Scoop
         if (env['SCOOP'] != null) p.join(env['SCOOP']!, 'shims'),
         if (user != null) p.join(user, 'scoop', 'shims'),
-        // Tesseract típico
         r'C:\Program Files\Tesseract-OCR',
-        // Ghostscript típico
         r'C:\Program Files\gs\gs10.00.0\bin',
         r'C:\Program Files\gs\gs9.56.1\bin',
-        // Python Scripts do usuario
         if (user != null)
           p.join(user, r'AppData\Local\Programs\Python\Python312\Scripts'),
         if (user != null)
@@ -178,27 +202,26 @@ class _MinimalHomeState extends State<MinimalHome> {
 
       for (final dir in extraDirs) {
         for (final n in candidates) {
-          final exeNames = <String>['$n.exe', n]; // por se viñese xa con .exe
+          final exeNames = <String>['$n.exe', n];
           for (final exe in exeNames) {
             final full = p.join(dir, exe);
             if (File(full).existsSync()) return full;
           }
         }
       }
-
       return null;
     } else {
-      // Unix/macOS: usa o shell de login para obter PATH real do usuario
       final res = await _runInLoginShell('command -v ${_sh(name)} || true');
       if (res.exitCode == 0) {
         final out = (res.stdout as String).trim();
         if (out.isNotEmpty && out != name) return out;
       }
       const candidates = [
-        '/opt/homebrew/bin', // Apple Silicon (Homebrew)
-        '/usr/local/bin', // Intel (Homebrew)
-        '/opt/local/bin', // MacPorts
-        '/usr/bin', '/bin',
+        '/opt/homebrew/bin',
+        '/usr/local/bin',
+        '/opt/local/bin',
+        '/usr/bin',
+        '/bin',
         '/Library/Frameworks/Python.framework/Versions/3.12/bin',
         '/Library/Frameworks/Python.framework/Versions/3.11/bin',
       ];
@@ -208,6 +231,17 @@ class _MinimalHomeState extends State<MinimalHome> {
       }
       return null;
     }
+  }
+
+  void _initMmPathsIfNeeded() {
+    if (!Platform.isWindows) return;
+    final env = Platform.environment;
+    final local = env['LOCALAPPDATA'];
+    if (local == null || local.isEmpty) return;
+    _mmRoot ??= p.join(local, 'CIG', 'tools', 'mm');
+    _mmBin ??= p.join(_mmRoot!, 'micromamba.exe');
+    _mmEnvRoot ??= p.join(_mmRoot!, 'envs', 'ocr-env');
+    _pythonExe ??= p.join(_mmEnvRoot!, 'python.exe');
   }
 
   // ===================== Resolver ferramentas e --version =====================
@@ -248,50 +282,128 @@ class _MinimalHomeState extends State<MinimalHome> {
 
     final okQ = await tryVersion('qpdf');
     final okO = await tryVersion('ocrmypdf');
-    await tryVersion('tesseract'); // informativos
+    await tryVersion('tesseract');
     await tryVersion('gs');
 
     final ok = okQ && okO;
     if (!ok) {
+      if (Platform.isWindows) {
+        _logAdd(
+            'Ferramentas non listas. Intentando auto-instalación (micromamba)…');
+
+        final local = Platform.environment['LOCALAPPDATA'] ?? '';
+        if (local.isEmpty) {
+          _logAdd('LOCALAPPDATA non dispoñible; non se pode usar micromamba.');
+          return false;
+        }
+
+        try {
+          final res = await bootstrapMicromambaAndEnv(
+            localAppData: local,
+            log: _logAdd,
+          );
+
+          // Actualiza rutas locais co resultado
+          _mmRoot = res.mmRoot;
+          _mmBin = res.mmBin;
+          _mmEnvRoot = res.envRoot;
+          _pythonExe = res.pythonExe;
+
+          // Preferir ferramentas do entorno
+          if (res.tools['qpdf'] != null) _tool['qpdf'] = res.tools['qpdf']!;
+          if (res.tools['gs'] != null) _tool['gs'] = res.tools['gs']!;
+          if (res.tools['tesseract'] != null)
+            _tool['tesseract'] = res.tools['tesseract']!;
+          // Para ocrmypdf: podería non existir .exe. Se non hai exe, usarase python -m no streaming.
+          if (_tool['ocrmypdf']!.isEmpty && _pythonExe != null) {
+            _tool['ocrmypdf'] = ''; // sinal para streaming con python -m
+          }
+
+          // Revalidación mínima
+          final okQ2 = await tryVersion('qpdf');
+          final okO2 = await _checkOcrmypdfVersionViaStreaming();
+          final ok2 = okQ2 && okO2;
+          if (!ok2) {
+            _logAdd(
+                'Ferramentas obrigatorias non listas (precísanse qpdf e ocrmypdf).');
+          }
+          return ok2;
+        } catch (e, st) {
+          _logAdd('Fallo no bootstrap micromamba: $e');
+          _logAdd(st.toString());
+        }
+      }
       _logAdd(
           'Ferramentas obrigatorias non listas (precísanse qpdf e ocrmypdf).');
     }
     return ok;
   }
 
+  Future<bool> _checkOcrmypdfVersionViaStreaming() async {
+    try {
+      final args = ['--version'];
+      if (Platform.isWindows &&
+          (_tool['ocrmypdf']?.isEmpty ?? true) &&
+          _pythonExe != null) {
+        final proc =
+            await Process.start(_pythonExe!, ['-m', 'ocrmypdf', ...args]);
+        proc.stdout.drain<void>();
+        proc.stderr.drain<void>();
+        final code = await proc.exitCode;
+        return code == 0;
+      } else if ((_tool['ocrmypdf'] ?? '').isNotEmpty) {
+        final r = await _runWithFallback(_tool['ocrmypdf']!, args);
+        return r.exitCode == 0;
+      }
+      return false;
+    } catch (_) {
+      return false;
+    }
+  }
+
   // ============================== Execución proceso ==============================
 
   Future<ProcessResult> _run(String exeAbs, List<String> args) async {
+    String realExe = exeAbs;
+    if (!exeAbs.contains(Platform.pathSeparator) &&
+        _tool.containsKey(exeAbs) &&
+        (_tool[exeAbs]?.isNotEmpty ?? false)) {
+      realExe = _tool[exeAbs]!;
+    }
     try {
-      return await Process.run(exeAbs, args);
+      return await Process.run(realExe, args);
     } on ProcessException catch (e) {
       final msg = (e.message).toLowerCase();
       if (!Platform.isWindows &&
           (msg.contains('operation not permitted') || msg.contains('eperm'))) {
-        final cmd = [_sh(exeAbs), ...args.map(_sh)].join(' ');
+        final cmd = [_sh(realExe), ...args.map(_sh)].join(' ');
         return await _runInLoginShell(cmd);
       }
       rethrow;
     }
   }
 
-  // --- NOVO: execución streaming de ocrmypdf (verbosa + heartbeat 30s) ---
+  // --- execución streaming de ocrmypdf (verbosa + heartbeat 30s) ---
   Future<bool> _runOcrmypdfStreaming(List<String> args) async {
-    final exe = _tool['ocrmypdf'] ?? '';
+    final useModule = Platform.isWindows &&
+        (_tool['ocrmypdf']?.isEmpty ?? true) &&
+        _pythonExe != null;
+
+    final exe = useModule ? _pythonExe! : (_tool['ocrmypdf'] ?? '');
     if (exe.isEmpty) {
       _logAdd('Comando non resolto: ocrmypdf');
       return false;
     }
 
-    _logAdd('Exec (stream): $exe ${args.join(' ')}');
+    final fullArgs = useModule ? ['-m', 'ocrmypdf', ...args] : args;
+    _logAdd('Exec (stream): $exe ${fullArgs.join(' ')}');
 
-    // Evitar que Python buferice a saída:
     final env = Map<String, String>.from(Platform.environment)
       ..putIfAbsent('PYTHONUNBUFFERED', () => '1');
 
     Process? proc;
     try {
-      proc = await Process.start(exe, args, environment: env);
+      proc = await Process.start(exe, fullArgs, environment: env);
 
       DateTime last = DateTime.now();
       final timer = Timer.periodic(const Duration(seconds: 30), (_) {
@@ -306,9 +418,7 @@ class _MinimalHomeState extends State<MinimalHome> {
           .transform(const LineSplitter())
           .listen((line) {
         last = DateTime.now();
-        if (line.trim().isNotEmpty) {
-          _logAdd('[stdout ocrmypdf] $line');
-        }
+        if (line.trim().isNotEmpty) _logAdd('[stdout ocrmypdf] $line');
       });
 
       proc.stderr
@@ -316,9 +426,7 @@ class _MinimalHomeState extends State<MinimalHome> {
           .transform(const LineSplitter())
           .listen((line) {
         last = DateTime.now();
-        if (line.trim().isNotEmpty) {
-          _logAdd('[stderr ocrmypdf] $line');
-        }
+        if (line.trim().isNotEmpty) _logAdd('[stderr ocrmypdf] $line');
       });
 
       final code = await proc.exitCode;
@@ -338,7 +446,6 @@ class _MinimalHomeState extends State<MinimalHome> {
 
   void _endModal({bool ok = false}) {
     if (_activeCtrl == null) return;
-
     if (ok) {
       _activeCtrl!.finishOk();
     } else {
@@ -350,7 +457,6 @@ class _MinimalHomeState extends State<MinimalHome> {
   // ============================== Fluxo principal UI ==============================
 
   Future<void> _pickFiles() async {
-    //_logAdd('Abrindo diálogo para seleccionar PDFs...');
     final typeGroup = XTypeGroup(label: 'PDFs', extensions: ['pdf']);
     final result = await openFiles(acceptedTypeGroups: [typeGroup]);
     if (result.isEmpty) {
@@ -362,29 +468,24 @@ class _MinimalHomeState extends State<MinimalHome> {
   }
 
   Future<void> _generate() async {
-    //_logAdd('--- PREMEU "Xerar PDF" ---');
     if (_files.isEmpty) {
       _logAdd('Lista baleira: arrastra PDFs ou preme Engadir.');
       return;
     }
 
-    // Mostrar modal de inmediato
     final ctrl = TaskProgressController();
     _activeCtrl = ctrl;
     // ignore: unawaited_futures
     showProgressLogDialog(context, ctrl, title: 'Xerando PDF…');
-    await Future.delayed(
-        const Duration(milliseconds: 16)); // dar un frame para pintar o modal
+    await Future.delayed(const Duration(milliseconds: 16));
 
     try {
-      // 0) resolver rutas e validar --version
       final toolsOk = await _resolveToolsAndCheckVersions();
       if (!toolsOk) {
-        _endModal(ok: false); // <- habilitar botón Pechar e parar spinner
+        _endModal(ok: false);
         return;
       }
 
-      // Estimación (suma * 1.2)
       final int sum = _files.fold<int>(
           0, (s, f) => s + (f.existsSync() ? f.lengthSync() : 0));
       final int estimate = (sum * 1.2).toInt();
@@ -425,7 +526,6 @@ class _MinimalHomeState extends State<MinimalHome> {
           '--',
           mergedRaw
         ];
-        // _logAdd('CMD: qpdf ${qpdfArgs.join(' ')}');
         final sw = Stopwatch()..start();
         final result = await _run('qpdf', qpdfArgs);
         final okMerge = result.exitCode == 0;
@@ -457,20 +557,16 @@ class _MinimalHomeState extends State<MinimalHome> {
           'lossless',
           '--jobs',
           Platform.numberOfProcessors.toString(),
-          '--skip-text', // cambiamos --redo-ocr por --skip-text para non re-OCRizar páxinas que xa teñen capa de texto e aforrar tempo en PDFs grandes
-          //'--redo-ocr',  // polo de agora comentado, pero quizais hai que deixar que sexa a usuaria quen escolha se quere forzar OCR de novo en todas as páxinas,
-          // porque parece que facendo un --skip-text algunhas non quedan tan ben como co --redo-ocr e igual dá erro cando se presente o PDF!
+          '--skip-text',
           '--oversample',
           '200',
-          '-v', // engadido para máis verbosidade
-          '1', // valor de -v
+          '-v',
+          '1',
           mergedRaw,
           mergedFinal,
         ];
-        // _logAdd('CMD: ocrmypdf ${ocrArgs.join(' ')}');
         final sw2 = Stopwatch()..start();
-        final okOcr =
-            await _runOcrmypdfStreaming(ocrArgs); // engadido (streaming)
+        final okOcr = await _runOcrmypdfStreaming(ocrArgs);
         _logAdd('ocrmypdf durou ${sw2.elapsed}');
         if (!okOcr) {
           _logAdd('ocrmypdf fallou. Abortando.');
@@ -503,7 +599,6 @@ class _MinimalHomeState extends State<MinimalHome> {
         });
       }
     } finally {
-      // En calquera caso, se non se pechou xa, pecha a modal
       _endModal();
     }
   }
@@ -571,8 +666,7 @@ class _MinimalHomeState extends State<MinimalHome> {
                         ListTile(
                           dense: true,
                           title: const Text(
-                            'Arrastra aquí os PDF (podes reordenar)',
-                          ),
+                              'Arrastra aquí os PDF (podes reordenar)'),
                           trailing: Text(
                             'Estimación: ${_fmt(est)}',
                             style: TextStyle(
@@ -599,8 +693,8 @@ class _MinimalHomeState extends State<MinimalHome> {
                               margin: const EdgeInsets.all(12),
                               decoration: BoxDecoration(
                                 border: Border.all(
-                                  color: _dragging ? Colors.blue : Colors.grey,
-                                ),
+                                    color:
+                                        _dragging ? Colors.blue : Colors.grey),
                                 borderRadius: BorderRadius.circular(12),
                               ),
                               child: ReorderableListView.builder(
@@ -610,7 +704,7 @@ class _MinimalHomeState extends State<MinimalHome> {
                                     if (n > o) n--;
                                     final it = _files.removeAt(o);
                                     _files.insert(n, it);
-                                    //  _logAdd('Reordenado $o -> $n');
+                                    // _logAdd('Reordenado $o -> $n');
                                   });
                                 },
                                 itemBuilder: (c, i) {
@@ -648,7 +742,7 @@ class _MinimalHomeState extends State<MinimalHome> {
                         const ListTile(dense: true, title: Text('Log')),
                         Expanded(
                           child: SingleChildScrollView(
-                            controller: _logScroll, // <-- AUTOSCROLL LOG
+                            controller: _logScroll,
                             padding: const EdgeInsets.all(12),
                             child: SelectableText(
                                 _log.isEmpty ? 'Sen log.' : _log),
@@ -678,32 +772,25 @@ class TaskProgressController {
   final ValueNotifier<TaskState> state =
       ValueNotifier<TaskState>(TaskState.working);
 
-  /// Engade unha liña ao log (con salto final se falta).
   void append(String s) {
     final line = s.endsWith('\n') ? s : '$s\n';
     log.value = log.value + line;
   }
 
-  /// Marca proceso como finalizado OK.
   void finishOk() {
     state.value = TaskState.doneOk;
   }
 
-  /// Marca proceso como finalizado con ERRO.
   void finishError() {
     state.value = TaskState.doneError;
   }
 
-  /// (Opcional) Limpa para unha nova execución.
   void reset() {
     log.value = '';
     state.value = TaskState.working;
   }
 }
 
-/// Mostra un modal bloqueante cun log en tempo real.
-/// - Escurece o fondo e bloquea toda a app.
-/// - Non permite pechar ata que `controller.done.value == true` (aparece botón Pechar).
 Future<void> showProgressLogDialog(
   BuildContext context,
   TaskProgressController controller, {
@@ -713,7 +800,7 @@ Future<void> showProgressLogDialog(
     context: context,
     barrierDismissible: false,
     barrierLabel: 'Progreso',
-    barrierColor: Colors.black.withValues(alpha: 0.6), // fondo escurecido
+    barrierColor: Colors.black.withValues(alpha: 0.6),
     transitionDuration: const Duration(milliseconds: 120),
     pageBuilder: (context, anim1, anim2) {
       return Center(
@@ -773,7 +860,6 @@ class _ProgressLogDialogState extends State<_ProgressLogDialog> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Cabeceira
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
               child: Row(
@@ -798,16 +884,13 @@ class _ProgressLogDialogState extends State<_ProgressLogDialog> {
                   ),
                   const SizedBox(width: 12),
                   Expanded(
-                    child: Text(
-                      widget.title,
-                      style: Theme.of(context).textTheme.titleMedium,
-                    ),
+                    child: Text(widget.title,
+                        style: Theme.of(context).textTheme.titleMedium),
                   ),
                 ],
               ),
             ),
             const Divider(height: 1),
-            // Corpo: área de log
             Expanded(
               child: ValueListenableBuilder<String>(
                 valueListenable: widget.controller.log,
@@ -827,9 +910,7 @@ class _ProgressLogDialogState extends State<_ProgressLogDialog> {
                         child: SelectableText(
                           text,
                           style: const TextStyle(
-                            fontFamily: 'monospace',
-                            height: 1.3,
-                          ),
+                              fontFamily: 'monospace', height: 1.3),
                         ),
                       ),
                     ),
@@ -838,7 +919,6 @@ class _ProgressLogDialogState extends State<_ProgressLogDialog> {
               ),
             ),
             const Divider(height: 1),
-            // Pé: botón de pechar (só cando remata)
             Padding(
               padding: const EdgeInsets.all(12),
               child: Row(
