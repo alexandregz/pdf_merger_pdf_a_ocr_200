@@ -93,12 +93,16 @@ class _MinimalHomeState extends State<MinimalHome> {
   }
 
   // ========================= Helpers PATH/login shell & exec =========================
-
-  String get _userShell => Platform.environment['SHELL'] ?? '/bin/zsh';
-
-  // Executa unha orde no login shell (carga ~/.zprofile) para ter PATH real
+// Executa unha orde no shell de login real do usuario en Unix
+// e en Windows usa cmd.exe /C (non existe zsh nin -lc).
   Future<ProcessResult> _runInLoginShell(String commandLine) {
-    return Process.run(_userShell, ['-lc', commandLine]);
+    if (Platform.isWindows) {
+      // En Windows, deixa que cmd.exe resolva o PATH do usuario
+      return Process.run('cmd.exe', ['/C', commandLine]);
+    } else {
+      final shell = Platform.environment['SHELL'] ?? '/bin/zsh';
+      return Process.run(shell, ['-lc', commandLine]);
+    }
   }
 
   String _sh(String s) => "'${s.replaceAll("'", r"'\''")}'";
@@ -121,25 +125,89 @@ class _MinimalHomeState extends State<MinimalHome> {
 
   // Resolve a ruta absoluta dun comando co login shell (command -v),
   // e con candidatos típicos (Homebrew/MacPorts/Python framework)
+// Resolve a ruta absoluta dun comando. En Windows usa `where`
+// (e tenta tamén nomes alternativos como gswin64c para Ghostscript).
   Future<String?> _which(String name) async {
-    final res = await _runInLoginShell('command -v ${_sh(name)} || true');
-    if (res.exitCode == 0) {
-      final out = (res.stdout as String).trim();
-      if (out.isNotEmpty && out != name) return out;
+    if (Platform.isWindows) {
+      // Algúns binarios teñen nomes diferentes en Windows.
+      final candidates = <String>[
+        if (name.toLowerCase() == 'gs') 'gswin64c', // Ghostscript
+        name,
+      ];
+
+      // 1) Proba con `where` (respecta o PATH real do usuario).
+      for (final n in candidates) {
+        try {
+          final r = await Process.run('where', [n], runInShell: true);
+          if (r.exitCode == 0) {
+            final out = (r.stdout as String).trim();
+            if (out.isNotEmpty) {
+              // colle a primeira ruta válida
+              final first = out.split(RegExp(r'\r?\n')).first.trim();
+              if (first.isNotEmpty && File(first).existsSync()) return first;
+            }
+          }
+        } catch (_) {
+          // Ignora, tentamos fallbacks
+        }
+      }
+
+      // 2) Pequenos fallbacks típicos (chocolatey/scoop/Python scripts)
+      final env = Platform.environment;
+      String? user = env['USERPROFILE'] ??
+          ((env['HOMEDRIVE'] != null && env['HOMEPATH'] != null)
+              ? '${env['HOMEDRIVE']}${env['HOMEPATH']}'
+              : null);
+
+      final extraDirs = <String>[
+        r'C:\ProgramData\chocolatey\bin',
+        // Scoop
+        if (env['SCOOP'] != null) p.join(env['SCOOP']!, 'shims'),
+        if (user != null) p.join(user, 'scoop', 'shims'),
+        // Tesseract típico
+        r'C:\Program Files\Tesseract-OCR',
+        // Ghostscript típico
+        r'C:\Program Files\gs\gs10.00.0\bin',
+        r'C:\Program Files\gs\gs9.56.1\bin',
+        // Python Scripts do usuario
+        if (user != null)
+          p.join(user, r'AppData\Local\Programs\Python\Python312\Scripts'),
+        if (user != null)
+          p.join(user, r'AppData\Local\Programs\Python\Python311\Scripts'),
+      ].whereType<String>().toList();
+
+      for (final dir in extraDirs) {
+        for (final n in candidates) {
+          final exeNames = <String>['$n.exe', n]; // por se viñese xa con .exe
+          for (final exe in exeNames) {
+            final full = p.join(dir, exe);
+            if (File(full).existsSync()) return full;
+          }
+        }
+      }
+
+      return null;
+    } else {
+      // Unix/macOS: usa o shell de login para obter PATH real do usuario
+      final res = await _runInLoginShell('command -v ${_sh(name)} || true');
+      if (res.exitCode == 0) {
+        final out = (res.stdout as String).trim();
+        if (out.isNotEmpty && out != name) return out;
+      }
+      const candidates = [
+        '/opt/homebrew/bin', // Apple Silicon (Homebrew)
+        '/usr/local/bin', // Intel (Homebrew)
+        '/opt/local/bin', // MacPorts
+        '/usr/bin', '/bin',
+        '/Library/Frameworks/Python.framework/Versions/3.12/bin',
+        '/Library/Frameworks/Python.framework/Versions/3.11/bin',
+      ];
+      for (final d in candidates) {
+        final pth = '$d/$name';
+        if (File(pth).existsSync()) return pth;
+      }
+      return null;
     }
-    const candidates = [
-      '/opt/homebrew/bin', // Apple Silicon (Homebrew)
-      '/usr/local/bin', // Intel (Homebrew)
-      '/opt/local/bin', // MacPorts
-      '/usr/bin', '/bin',
-      '/Library/Frameworks/Python.framework/Versions/3.12/bin',
-      '/Library/Frameworks/Python.framework/Versions/3.11/bin',
-    ];
-    for (final d in candidates) {
-      final pth = '$d/$name';
-      if (File(pth).existsSync()) return pth;
-    }
-    return null;
   }
 
   // ===================== Resolver ferramentas e --version =====================
@@ -170,7 +238,7 @@ class _MinimalHomeState extends State<MinimalHome> {
             .first
             .trim();
         _logAdd(
-            '[$key --version] exit=${r.exitCode}${first.isNotEmpty ? ' · ' + first : ''}');
+            '[$key --version] exit=${r.exitCode}${first.isNotEmpty ? ' · $first' : ''}');
         return r.exitCode == 0;
       } catch (e) {
         _logAdd('Erro lanzando $exe --version: $e');
@@ -184,43 +252,26 @@ class _MinimalHomeState extends State<MinimalHome> {
     await tryVersion('gs');
 
     final ok = okQ && okO;
-    if (!ok)
+    if (!ok) {
       _logAdd(
           'Ferramentas obrigatorias non listas (precísanse qpdf e ocrmypdf).');
+    }
     return ok;
   }
 
   // ============================== Execución proceso ==============================
 
-  Future<bool> _run(String key, List<String> args) async {
-    final exe = _tool[key] ?? '';
-    if (exe.isEmpty) {
-      _logAdd('Comando non resolto: $key');
-      return false;
-    }
-    _logAdd('Exec: $exe ${args.join(' ')}');
+  Future<ProcessResult> _run(String exeAbs, List<String> args) async {
     try {
-      final r = await _runWithFallback(exe, args);
-      final out = (r.stdout is String ? r.stdout as String : '').trim();
-      final err = (r.stderr is String ? r.stderr as String : '').trim();
-      if (out.isNotEmpty) _logAdd('[stdout $key] $out');
-      if (err.isNotEmpty) _logAdd('[stderr $key] $err');
-      _logAdd('$key -> exitCode ${r.exitCode}');
-      return r.exitCode == 0;
-    } catch (e) {
-      _logAdd('Non se puido executar "$exe": $e');
-      return false;
-    }
-  }
-
-  Future<bool> _runSilent(String key, List<String> args) async {
-    final exe = _tool[key] ?? '';
-    if (exe.isEmpty) return false;
-    try {
-      final r = await _runWithFallback(exe, args);
-      return r.exitCode == 0;
-    } catch (_) {
-      return false;
+      return await Process.run(exeAbs, args);
+    } on ProcessException catch (e) {
+      final msg = (e.message).toLowerCase();
+      if (!Platform.isWindows &&
+          (msg.contains('operation not permitted') || msg.contains('eperm'))) {
+        final cmd = [_sh(exeAbs), ...args.map(_sh)].join(' ');
+        return await _runInLoginShell(cmd);
+      }
+      rethrow;
     }
   }
 
@@ -277,7 +328,7 @@ class _MinimalHomeState extends State<MinimalHome> {
     } catch (e) {
       _logAdd('Non se puido iniciar ocrmypdf en streaming: $e');
       try {
-        await proc?.kill();
+        proc?.kill();
       } catch (_) {}
       return false;
     }
@@ -376,8 +427,10 @@ class _MinimalHomeState extends State<MinimalHome> {
         ];
         // _logAdd('CMD: qpdf ${qpdfArgs.join(' ')}');
         final sw = Stopwatch()..start();
-        final okMerge = await _run('qpdf', qpdfArgs);
+        final result = await _run('qpdf', qpdfArgs);
+        final okMerge = result.exitCode == 0;
         _logAdd('qpdf durou ${sw.elapsed}');
+
         if (!okMerge) {
           _logAdd('qpdf fallou. Abortando.');
           _endModal(ok: false);
@@ -404,19 +457,20 @@ class _MinimalHomeState extends State<MinimalHome> {
           'lossless',
           '--jobs',
           Platform.numberOfProcessors.toString(),
-          '--skip-text',    // cambiamos --redo-ocr por --skip-text para non re-OCRizar páxinas que xa teñen capa de texto e aforrar tempo en PDFs grandes
+          '--skip-text', // cambiamos --redo-ocr por --skip-text para non re-OCRizar páxinas que xa teñen capa de texto e aforrar tempo en PDFs grandes
           //'--redo-ocr',  // polo de agora comentado, pero quizais hai que deixar que sexa a usuaria quen escolha se quere forzar OCR de novo en todas as páxinas,
-                            // porque parece que facendo un --skip-text algunhas non quedan tan ben como co --redo-ocr e igual dá erro cando se presente o PDF!
+          // porque parece que facendo un --skip-text algunhas non quedan tan ben como co --redo-ocr e igual dá erro cando se presente o PDF!
           '--oversample',
           '200',
-          '-v',             // engadido para máis verbosidade
-          '1',              // valor de -v
+          '-v', // engadido para máis verbosidade
+          '1', // valor de -v
           mergedRaw,
           mergedFinal,
         ];
         // _logAdd('CMD: ocrmypdf ${ocrArgs.join(' ')}');
         final sw2 = Stopwatch()..start();
-        final okOcr = await _runOcrmypdfStreaming(ocrArgs); // engadido (streaming)
+        final okOcr =
+            await _runOcrmypdfStreaming(ocrArgs); // engadido (streaming)
         _logAdd('ocrmypdf durou ${sw2.elapsed}');
         if (!okOcr) {
           _logAdd('ocrmypdf fallou. Abortando.');
@@ -556,7 +610,7 @@ class _MinimalHomeState extends State<MinimalHome> {
                                     if (n > o) n--;
                                     final it = _files.removeAt(o);
                                     _files.insert(n, it);
-                                  //  _logAdd('Reordenado $o -> $n');
+                                    //  _logAdd('Reordenado $o -> $n');
                                   });
                                 },
                                 itemBuilder: (c, i) {
