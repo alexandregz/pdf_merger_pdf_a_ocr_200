@@ -77,7 +77,13 @@ Xunta PDFs nun só según os requerimentos dos xulgados
 ## ToDo
 
 - **Windows**: control de todas as dependencias, o usuario non debe ter que instalar nada.
-- Engadir identidade corporativa (Iconos e demais identidade da CIG)
+- Opción de empregar `--redo-ocr` en `ocrmypdf` como parámetro en lugar de `--skip-text`. Agora mesmo empregando `--skip-text`, un PDF de 33M e 170 pax mergeado con outro de 3M e 374 pax. de texto e outro de 300K en lugar de empregar 15 minutos tarda 45 segundos e segue a devolver un PDF/A OCR. Pola contra con `--redo-ocr` convirte en lexible todas as páxinas ainda sen o ser no orixinal.
+
+Cos mesmos ficheiros:
+- `--skip-text` ==  `Feito en 0:00:45.114569` (45 seg.)
+- `--redo-ocr` == `Feito en 0:16:50.251696` (16 min.)
+
+
 
 ## Capturas de pantalla
 

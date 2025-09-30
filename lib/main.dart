@@ -405,6 +405,8 @@ class _MinimalHomeState extends State<MinimalHome> {
           '--jobs',
           Platform.numberOfProcessors.toString(),
           '--skip-text',    // cambiamos --redo-ocr por --skip-text para non re-OCRizar páxinas que xa teñen capa de texto e aforrar tempo en PDFs grandes
+          //'--redo-ocr',  // polo de agora comentado, pero quizais hai que deixar que sexa a usuaria quen escolha se quere forzar OCR de novo en todas as páxinas,
+                            // porque parece que facendo un --skip-text algunhas non quedan tan ben como co --redo-ocr e igual dá erro cando se presente o PDF!
           '--oversample',
           '200',
           '-v',             // engadido para máis verbosidade
