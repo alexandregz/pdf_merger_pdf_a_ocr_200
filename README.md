@@ -56,7 +56,7 @@ Xunta PDFs nun só según os requerimentos dos xulgados
 - **qpdf**: para unir PDFs na orde indicada, crea un merged_raw.pdf a partir da lista
 - **ocrmypdf**: orquestador do OCR e da conversión a PDF/A, chamando a `tesseract` e `gs`. Toma o merged_raw.pdf, fai OCR, mete capa de texto, converte a PDF/A e xera merged_final.pdf
 - **tesseract**: motor do OCR, chamado internamente por `ocrmypdf`
-- **gs**: empregado internamente por `ocrmypdf`.
+- **gs**: empregado internamente por `ocrmypdf` para render/repasar e axudar coa conformidade PDF/A.
 
 
 ## Notas desenvolvemento
