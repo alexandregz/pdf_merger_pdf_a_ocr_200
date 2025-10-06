@@ -805,8 +805,10 @@ String? _portableRootWindows() {
                                       icon: const Icon(Icons.close),
                                       onPressed: _busy
                                           ? null
-                                          : () => setState(
-                                              () => _files.removeAt(i)),
+                                          : () => setState(() {
+                                              final removed = _files.removeAt(i);
+                                              _logAdd("Eliminado ficheiro: ${p.basename(removed.path)}");
+                                            }),
                                     ),
                                   );
                                 },
