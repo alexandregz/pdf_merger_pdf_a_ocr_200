@@ -106,3 +106,13 @@ install(DIRECTORY "${PROJECT_BUILD_DIR}/${FLUTTER_ASSET_DIR_NAME}"
 install(FILES "${AOT_LIBRARY}" DESTINATION "${INSTALL_BUNDLE_DATA_DIR}"
   CONFIGURATIONS Profile;Release
   COMPONENT Runtime)
+
+
+# --- Copiar OCRmyPDFPortable xunto ao .exe ---
+set(PORTABLE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/OCRmyPDFPortable")
+if(EXISTS "${PORTABLE_DIR}")
+  add_custom_command(TARGET ${BINARY_NAME} POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+      "${PORTABLE_DIR}"
+      "$<TARGET_FILE_DIR:${BINARY_NAME}>/OCRmyPDFPortable")
+endif()

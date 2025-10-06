@@ -32,7 +32,7 @@ Xunta PDFs nun só según os requerimentos dos xulgados
 
 ## Notas de uso
 
-1. **Instalar dependencias externas** no sistema (PATH):
+1.(macos/*nix) **Instalar dependencias externas** no sistema (PATH):
    - `qpdf`, `ocrmypdf`, `tesseract`, `gs` (ghostscript)
 2. Arrastra PDFs á caixa ou emprega o botón **"Engadir"**, reordénaos se precisas.
 3. Preme **“Xerar PDF”**, escolle o nome do ficheiro final.
@@ -64,7 +64,7 @@ Xunta PDFs nun só según os requerimentos dos xulgados
 - en `macos` hai que saltarse o `sandbox` dos binarios, ou ben eliminando nos `.entitlements` os `com.apple.security.app-sandbox` ou empregando `xattr` directamente contra os binarios empregados
 - **OCR**: os argumentos actuais están en `ocrArgs`, por se cómpre revisalos
 - **Tipo de PDF/A**: `ocrmypdf` xera PDF/A-2b por defecto. Poderíanse engadir flags adicionais (ex.: `--pdfa-1`, `--pdfa-3`) se a versión os soporta.
-
+- en `windows` emprega `ocrmypdf` autocontido en proxecto propio: https://github.com/alexandregz/ocrmypdf_portable_windows
 
 
 ## Utilidades

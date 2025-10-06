@@ -52,6 +52,14 @@ class _MinimalHomeState extends State<MinimalHome> {
 
   static const int fourGB = 4 * 1024 * 1024 * 1024; // 4 GiB
 
+  // --- Bundled tools (Windows) ---
+  String? _bundleDir;         // base: <exeDir>\OCRmyPDFPortable
+  String? _bundleOcrmypdf;    // <base>\OCRmyPDFPortable.exe
+  String? _bundleQpdf;        // <base>\OCRmyPDFPortable_internal\vendors\qpdf\qpdf.exe
+  String? _bundleGs;          // <base>\OCRmyPDFPortable_internal\vendors\ghostscript\bin\gswin64c.exe
+  String? _bundleTesseract;   // <base>\OCRmyPDFPortable_internal\vendors\tesseract\tesseract.exe
+  Map<String, String> _bundleEnv = {}; // PATH/TESSDATA_PREFIX
+
   // rutas resoltas das ferramentas
   final Map<String, String> _tool = {
     'qpdf': '',
@@ -111,7 +119,7 @@ class _MinimalHomeState extends State<MinimalHome> {
   Future<ProcessResult> _runWithFallback(
       String exeAbs, List<String> args) async {
     try {
-      return await Process.run(exeAbs, args);
+      return await Process.run(exeAbs, args, environment: _envWithBundle());
     } on ProcessException catch (e) {
       final msg =
           (e.message).toLowerCase(); // evitar uso de osError por compat.
@@ -122,6 +130,88 @@ class _MinimalHomeState extends State<MinimalHome> {
       rethrow;
     }
   }
+
+  // ---------- Bundled helpers (Windows) ----------
+  String _exeDir() => p.dirname(Platform.resolvedExecutable);
+
+  String _detectBundleDir() {
+    final exeDir = _exeDir();
+    final d1 = p.join(exeDir, 'OCRmyPDFPortable');
+    if (Directory(d1).existsSync()) return d1;
+    final d2 = p.join(Directory.current.path, 'OCRmyPDFPortable');
+    if (Directory(d2).existsSync()) return d2;
+    return exeDir;
+  }
+
+  void _setupBundledToolsIfPresent() {
+    if (!Platform.isWindows) return;
+
+    final base = _detectBundleDir();
+    _bundleDir = base;
+
+    String pathOf(String rel) => p.join(base, rel);
+    final vroot =
+        'OCRmyPDFPortable_internal${Platform.pathSeparator}vendors';
+
+    _bundleOcrmypdf = pathOf('OCRmyPDFPortable.exe');
+    _bundleQpdf = pathOf(
+        '$vroot${Platform.pathSeparator}qpdf${Platform.pathSeparator}qpdf.exe');
+    _bundleGs = pathOf(
+        '$vroot${Platform.pathSeparator}ghostscript${Platform.pathSeparator}bin${Platform.pathSeparator}gswin64c.exe');
+    if (!File(_bundleGs!).existsSync()) {
+      _bundleGs = pathOf(
+          '$vroot${Platform.pathSeparator}ghostscript${Platform.pathSeparator}bin${Platform.pathSeparator}gswin32c.exe');
+    }
+    _bundleTesseract = pathOf(
+        '$vroot${Platform.pathSeparator}tesseract${Platform.pathSeparator}tesseract.exe');
+
+    if (File(_bundleQpdf ?? '').existsSync()) _tool['qpdf'] = _bundleQpdf!;
+    if (File(_bundleGs ?? '').existsSync()) _tool['gs'] = _bundleGs!;
+    if (File(_bundleTesseract ?? '').existsSync()) {
+      _tool['tesseract'] = _bundleTesseract!;
+    }
+    if (File(_bundleOcrmypdf ?? '').existsSync()) {
+      _tool['ocrmypdf'] = _bundleOcrmypdf!;
+    }
+
+    final pathParts = <String>[];
+    String dirOf(String f) => p.dirname(f);
+
+    if (_bundleQpdf != null && File(_bundleQpdf!).existsSync()) {
+      pathParts.add(dirOf(_bundleQpdf!));
+    }
+    if (_bundleGs != null && File(_bundleGs!).existsSync()) {
+      pathParts.add(dirOf(_bundleGs!));
+    }
+    if (_bundleTesseract != null && File(_bundleTesseract!).existsSync()) {
+      pathParts.add(dirOf(_bundleTesseract!));
+    }
+    if (_bundleOcrmypdf != null && File(_bundleOcrmypdf!).existsSync()) {
+      pathParts.add(dirOf(_bundleOcrmypdf!));
+    }
+
+    final tessdataDir = pathOf(
+        '$vroot${Platform.pathSeparator}tesseract${Platform.pathSeparator}tessdata');
+    if (Directory(tessdataDir).existsSync()) {
+      _bundleEnv['TESSDATA_PREFIX'] =
+          p.normalize(pathOf('$vroot${Platform.pathSeparator}tesseract'));
+    }
+
+    final sep = Platform.isWindows ? ';' : ':';
+    final currentPath = Platform.environment['PATH'] ?? '';
+    final prepend = pathParts.toSet().join(sep);
+    if (prepend.isNotEmpty) {
+      _bundleEnv['PATH'] =
+          prepend + (currentPath.isEmpty ? '' : '$sep$currentPath');
+    }
+  }
+
+  Map<String, String> _envWithBundle() {
+    final e = Map<String, String>.from(Platform.environment);
+    _bundleEnv.forEach((k, v) => e[k] = v);
+    return e;
+  }
+  // -----------------------------------------------
 
   // Resolve a ruta absoluta dun comando co login shell (command -v),
   // e con candidatos típicos (Homebrew/MacPorts/Python framework)
@@ -213,11 +303,29 @@ class _MinimalHomeState extends State<MinimalHome> {
   // ===================== Resolver ferramentas e --version =====================
 
   Future<bool> _resolveToolsAndCheckVersions() async {
+    if (Platform.isWindows) {
+      _setupBundledToolsIfPresent();
+    }
+
     _logAdd('Resolvendo rutas das ferramentas co PATH do usuario...');
-    _tool['qpdf'] = (await _which('qpdf')) ?? '';
-    _tool['ocrmypdf'] = (await _which('ocrmypdf')) ?? '';
-    _tool['tesseract'] = (await _which('tesseract')) ?? '';
-    _tool['gs'] = (await _which('gs')) ?? '';
+    // En Windows, se xa están cubertas por bundle, non pises.
+    if (!Platform.isWindows || (_tool['qpdf'] ?? '').isEmpty) {
+      _tool['qpdf'] =
+          _tool['qpdf']!.isNotEmpty ? _tool['qpdf']! : ((await _which('qpdf')) ?? '');
+    }
+    if (!Platform.isWindows || (_tool['ocrmypdf'] ?? '').isEmpty) {
+      _tool['ocrmypdf'] =
+          _tool['ocrmypdf']!.isNotEmpty ? _tool['ocrmypdf']! : ((await _which('ocrmypdf')) ?? '');
+    }
+    if (!Platform.isWindows || (_tool['tesseract'] ?? '').isEmpty) {
+      _tool['tesseract'] = _tool['tesseract']!.isNotEmpty
+          ? _tool['tesseract']!
+          : ((await _which('tesseract')) ?? '');
+    }
+    if (!Platform.isWindows || (_tool['gs'] ?? '').isEmpty) {
+      _tool['gs'] =
+          _tool['gs']!.isNotEmpty ? _tool['gs']! : ((await _which('gs')) ?? '');
+    }
 
     _logAdd(
         'qpdf      -> ${_tool['qpdf']!.isEmpty ? 'NON ATOPADO' : _tool['qpdf']}');
@@ -232,7 +340,8 @@ class _MinimalHomeState extends State<MinimalHome> {
       final exe = _tool[key]!;
       if (exe.isEmpty) return false;
       try {
-        final r = await _runWithFallback(exe, ['--version']);
+        final r =
+            await Process.run(exe, ['--version'], environment: _envWithBundle());
         final first = (r.stdout is String ? r.stdout as String : '')
             .split('\n')
             .first
@@ -247,7 +356,7 @@ class _MinimalHomeState extends State<MinimalHome> {
     }
 
     final okQ = await tryVersion('qpdf');
-    final okO = await tryVersion('ocrmypdf');
+    final okO = await tryVersion('ocrmypdf'); // importante co Portable
     await tryVersion('tesseract'); // informativos
     await tryVersion('gs');
 
@@ -262,13 +371,20 @@ class _MinimalHomeState extends State<MinimalHome> {
   // ============================== Execución proceso ==============================
 
   Future<ProcessResult> _run(String exeAbs, List<String> args) async {
+    // Bridge: se nos pasan 'qpdf'/'gs'/... e temos ruta en _tool, úsaa.
+    String realExe = exeAbs;
+    if (!exeAbs.contains(Platform.pathSeparator) &&
+        _tool.containsKey(exeAbs) &&
+        (_tool[exeAbs]?.isNotEmpty ?? false)) {
+      realExe = _tool[exeAbs]!;
+    }
     try {
-      return await Process.run(exeAbs, args);
+      return await Process.run(realExe, args, environment: _envWithBundle());
     } on ProcessException catch (e) {
       final msg = (e.message).toLowerCase();
       if (!Platform.isWindows &&
           (msg.contains('operation not permitted') || msg.contains('eperm'))) {
-        final cmd = [_sh(exeAbs), ...args.map(_sh)].join(' ');
+        final cmd = [_sh(realExe), ...args.map(_sh)].join(' ');
         return await _runInLoginShell(cmd);
       }
       rethrow;
@@ -277,7 +393,8 @@ class _MinimalHomeState extends State<MinimalHome> {
 
   // --- NOVO: execución streaming de ocrmypdf (verbosa + heartbeat 30s) ---
   Future<bool> _runOcrmypdfStreaming(List<String> args) async {
-    final exe = _tool['ocrmypdf'] ?? '';
+    // En Windows, usa o exe do bundle; en macOS/Linux usa o que haxa en PATH/_tool
+    final exe = (_tool['ocrmypdf'] ?? '');
     if (exe.isEmpty) {
       _logAdd('Comando non resolto: ocrmypdf');
       return false;
@@ -285,13 +402,9 @@ class _MinimalHomeState extends State<MinimalHome> {
 
     _logAdd('Exec (stream): $exe ${args.join(' ')}');
 
-    // Evitar que Python buferice a saída:
-    final env = Map<String, String>.from(Platform.environment)
-      ..putIfAbsent('PYTHONUNBUFFERED', () => '1');
-
     Process? proc;
     try {
-      proc = await Process.start(exe, args, environment: env);
+      proc = await Process.start(exe, args, environment: _envWithBundle());
 
       DateTime last = DateTime.now();
       final timer = Timer.periodic(const Duration(seconds: 30), (_) {
@@ -524,7 +637,7 @@ class _MinimalHomeState extends State<MinimalHome> {
     final est = (() {
       final s = _files.fold<int>(
           0, (a, f) => a + (f.existsSync() ? f.lengthSync() : 0));
-      return (s * 1.2).toInt();
+    return (s * 1.2).toInt();
     })();
     final over = est > fourGB;
 
@@ -640,7 +753,8 @@ class _MinimalHomeState extends State<MinimalHome> {
                   ),
                 ),
                 Expanded(
-                  child: Card(
+                  child: Card
+                  (
                     margin: const EdgeInsets.all(12),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
