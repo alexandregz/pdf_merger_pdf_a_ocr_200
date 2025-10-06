@@ -55,9 +55,9 @@ class _MinimalHomeState extends State<MinimalHome> {
   // --- Bundled tools (Windows) ---
   String? _bundleDir;         // base: <exeDir>\OCRmyPDFPortable
   String? _bundleOcrmypdf;    // <base>\OCRmyPDFPortable.exe
-  String? _bundleQpdf;        // <base>\OCRmyPDFPortable_internal\vendors\qpdf\qpdf.exe
-  String? _bundleGs;          // <base>\OCRmyPDFPortable_internal\vendors\ghostscript\bin\gswin64c.exe
-  String? _bundleTesseract;   // <base>\OCRmyPDFPortable_internal\vendors\tesseract\tesseract.exe
+  String? _bundleQpdf;        // <base>\OCRmyPDFPortable\_internal\vendors\qpdf\qpdf.exe
+  String? _bundleGs;          // <base>\OCRmyPDFPortable\_internal\vendors\ghostscript\bin\gswin64c.exe
+  String? _bundleTesseract;   // <base>\OCRmyPDFPortable\_internal\vendors\tesseract\tesseract.exe
   Map<String, String> _bundleEnv = {}; // PATH/TESSDATA_PREFIX
 
   // rutas resoltas das ferramentas
@@ -151,7 +151,7 @@ class _MinimalHomeState extends State<MinimalHome> {
 
     String pathOf(String rel) => p.join(base, rel);
     final vroot =
-        'OCRmyPDFPortable_internal${Platform.pathSeparator}vendors';
+        'OCRmyPDFPortable${Platform.pathSeparator}_internal${Platform.pathSeparator}vendors';
 
     _bundleOcrmypdf = pathOf('OCRmyPDFPortable.exe');
     _bundleQpdf = pathOf(
@@ -213,6 +213,15 @@ class _MinimalHomeState extends State<MinimalHome> {
   }
   // -----------------------------------------------
 
+// Se existe o cartafol OCRmyPDFPortable ao lado do .exe, devolve a súa ruta
+String? _portableRootWindows() {
+  final exeDir = _winExeDir();
+  final root = p.join(exeDir, 'OCRmyPDFPortable');
+  if (Directory(root).existsSync()) return root;
+  return null;
+}
+
+
   // Resolve a ruta absoluta dun comando co login shell (command -v),
   // e con candidatos típicos (Homebrew/MacPorts/Python framework)
 // Resolve a ruta absoluta dun comando. En Windows usa `where`
@@ -224,6 +233,54 @@ class _MinimalHomeState extends State<MinimalHome> {
         if (name.toLowerCase() == 'gs') 'gswin64c', // Ghostscript
         name,
       ];
+
+      // --- PRIORIDADE: OCRmyPDFPortable autocontido ---
+      final pr = _portableRootWindows();
+      if (pr != null) {
+        // exe principal de OCRmyPDFPortable
+        final portableExe = p.join(pr, 'OCRmyPDFPortable.exe');
+
+        // vendors internos
+        final vRoot = p.join(pr, 'OCRmyPDFPortable', '_internal', 'vendors');
+
+        String? fromVendorsQpdf() =>
+            File(p.join(vRoot, 'qpdf', 'qpdf.exe')).existsSync()
+                ? p.join(vRoot, 'qpdf', 'qpdf.exe')
+                : null;
+
+        String? fromVendorsGs() {
+          final a = p.join(vRoot, 'ghostscript', 'bin', 'gswin64c.exe');
+          final b = p.join(vRoot, 'ghostscript', 'bin', 'gswin32c.exe');
+          if (File(a).existsSync()) return a;
+          if (File(b).existsSync()) return b;
+          return null;
+        }
+
+        String? fromVendorsTess() =>
+            File(p.join(vRoot, 'tesseract', 'tesseract.exe')).existsSync()
+                ? p.join(vRoot, 'tesseract', 'tesseract.exe')
+                : null;
+
+        switch (name.toLowerCase()) {
+          case 'ocrmypdf':
+            if (File(portableExe).existsSync()) return portableExe;
+            break;
+          case 'qpdf':
+            final q = fromVendorsQpdf();
+            if (q != null) return q;
+            break;
+          case 'gs':
+            final g = fromVendorsGs();
+            if (g != null) return g;
+            break;
+          case 'tesseract':
+            final t = fromVendorsTess();
+            if (t != null) return t;
+            break;
+        }
+      }
+      // --- FIN PRIORIDADE OCRmyPDFPortable ---
+
 
       // 1) Proba con `where` (respecta o PATH real do usuario).
       for (final n in candidates) {
@@ -302,29 +359,38 @@ class _MinimalHomeState extends State<MinimalHome> {
 
   // ===================== Resolver ferramentas e --version =====================
 
+  // Ruta do .exe (runner) en Windows (Debug/Release)
+  String _winExeDir() => p.dirname(Platform.resolvedExecutable);
+
+  // Constrúe os paths PORTABLE obrigatorios (xunto ao .exe)
+  Map<String, String> _portableToolPathsWindows() {
+    final exeDir = _winExeDir();
+    final root = p.join(exeDir, 'OCRmyPDFPortable');
+    return {
+      'ocrmypdf': p.join(root, 'OCRmyPDFPortable.exe'),
+      'qpdf': p.join(root, '_internal', 'vendors', 'qpdf', 'qpdf.exe'),
+      'tesseract': p.join(root, '_internal', 'vendors', 'tesseract', 'tesseract.exe'),
+      'gs': p.join(root, '_internal', 'vendors', 'ghostscript', 'bin', 'gswin64c.exe'),
+    };
+  }
+
+
   Future<bool> _resolveToolsAndCheckVersions() async {
     if (Platform.isWindows) {
+      // Forzar rutas PORTABLE (sen buscar no sistema)
+      final forced = _portableToolPathsWindows();
+      _tool['qpdf'] = forced['qpdf']!;
+      _tool['ocrmypdf'] = forced['ocrmypdf']!;
+      _tool['tesseract'] = forced['tesseract']!;
+      _tool['gs'] = forced['gs']!;
+      // Configurar PATH/TESSDATA_PREFIX para o bundle
       _setupBundledToolsIfPresent();
-    }
-
-    _logAdd('Resolvendo rutas das ferramentas co PATH do usuario...');
-    // En Windows, se xa están cubertas por bundle, non pises.
-    if (!Platform.isWindows || (_tool['qpdf'] ?? '').isEmpty) {
-      _tool['qpdf'] =
-          _tool['qpdf']!.isNotEmpty ? _tool['qpdf']! : ((await _which('qpdf')) ?? '');
-    }
-    if (!Platform.isWindows || (_tool['ocrmypdf'] ?? '').isEmpty) {
-      _tool['ocrmypdf'] =
-          _tool['ocrmypdf']!.isNotEmpty ? _tool['ocrmypdf']! : ((await _which('ocrmypdf')) ?? '');
-    }
-    if (!Platform.isWindows || (_tool['tesseract'] ?? '').isEmpty) {
-      _tool['tesseract'] = _tool['tesseract']!.isNotEmpty
-          ? _tool['tesseract']!
-          : ((await _which('tesseract')) ?? '');
-    }
-    if (!Platform.isWindows || (_tool['gs'] ?? '').isEmpty) {
-      _tool['gs'] =
-          _tool['gs']!.isNotEmpty ? _tool['gs']! : ((await _which('gs')) ?? '');
+    } else {
+      _logAdd('Resolvendo rutas das ferramentas co PATH do usuario...');
+      _tool['qpdf'] = (await _which('qpdf')) ?? '';
+      _tool['ocrmypdf'] = (await _which('ocrmypdf')) ?? '';
+      _tool['tesseract'] = (await _which('tesseract')) ?? '';
+      _tool['gs'] = (await _which('gs')) ?? '';
     }
 
     _logAdd(
