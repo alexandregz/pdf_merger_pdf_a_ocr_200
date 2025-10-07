@@ -10,6 +10,7 @@ import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
 
 import '../widgets/progress_log_dialog.dart';
+import '../widgets/success_result_dialog.dart';
 
 
 class MinimalHome extends StatefulWidget {
@@ -19,6 +20,12 @@ class MinimalHome extends StatefulWidget {
 }
 
 class _MinimalHomeState extends State<MinimalHome> {
+  String? _successPath;
+  int _successSize = 0;
+  int _successPages = 0;
+  bool _successPdfaLikely = false;
+  Future<void>? _genDialogFuture;
+  bool _showSuccessOnGenClose = false;
   final List<File> _files = [];
   bool _dragging = false;
   bool _busy = false;
@@ -417,6 +424,19 @@ class _MinimalHomeState extends State<MinimalHome> {
 
   // ============================== Execución proceso ==============================
 
+  Future<int> _getPageCount(String pdfPath) async {
+    try {
+      final r = await _run('qpdf', ['--show-npages', pdfPath]);
+      if (r.exitCode == 0) {
+        final s = (r.stdout is String ? r.stdout as String : '').trim();
+        final n = int.tryParse(s);
+        return n ?? 0;
+      }
+    } catch (_) {}
+    return 0;
+  }
+
+
   Future<ProcessResult> _run(String exeAbs, List<String> args) async {
     // Bridge: se nos pasan 'qpdf'/'gs'/... e temos ruta en _tool, úsaa.
     String realExe = exeAbs;
@@ -532,7 +552,25 @@ class _MinimalHomeState extends State<MinimalHome> {
     final ctrl = TaskProgressController();
     _activeCtrl = ctrl;
     // ignore: unawaited_futures
-    showProgressLogDialog(context, ctrl, title: 'Xerando PDF…');
+     _genDialogFuture = showProgressLogDialog(context, ctrl, title: 'Xerando PDF…');
+    _genDialogFuture!.then((_) async {
+      if (_showSuccessOnGenClose && _successPath != null) {
+        await showSuccessResultDialog(context,
+          savePath: _successPath!,
+          sizeBytes: _successSize,
+          pageCount: _successPages,
+          pdfaLikely: _successPdfaLikely,
+        );
+        setState(() {
+          _files.clear();
+          _log = '';
+          _progress = 0.0;
+          _busy = false;
+          _dragging = false;
+        });
+        _showSuccessOnGenClose = false;
+      }
+    });
     await Future.delayed(
         const Duration(milliseconds: 16)); // dar un frame para pintar o modal
 
@@ -639,6 +677,7 @@ class _MinimalHomeState extends State<MinimalHome> {
 
         // 4) Límite final e gardar
         final fSize = File(mergedFinal).lengthSync();
+        final pages = await _getPageCount(mergedFinal);
         _logAdd('Tamaño final: ${_fmt(fSize)}');
         if (fSize > fourGB) {
           _logAdd('Resultado supera 4GB. Non se gardará.');
@@ -647,7 +686,12 @@ class _MinimalHomeState extends State<MinimalHome> {
         }
 
         await File(mergedFinal).copy(savePath);
+        _successPath = savePath;
+        _successSize = fSize;
+        _successPages = pages;
+        _successPdfaLikely = true;
         _logAdd('Feito en ${swTotal.elapsed}. Gardado en: $savePath');
+        _showSuccessOnGenClose = true;
         _endModal(ok: true);
       } catch (e, st) {
         _logAdd('Erro: $e');
