@@ -4,11 +4,15 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
-import 'package:pdf_merger_ocr_pdfa/constants.dart';
 import 'package:pub_semver/pub_semver.dart';
 import 'package:url_launcher/url_launcher.dart';
+
+import 'package:http/io_client.dart';
+
+
+// timeout de update, para que non quede colgada a app en windows
+const _fetchTimeout = Duration(seconds: 3);
 
 /// Estrutura sinxela cos datos do manifest remoto
 class UpdateInfo {
@@ -18,23 +22,55 @@ class UpdateInfo {
   const UpdateInfo(this.latest, this.url, this.notes);
 }
 
+
 /// Descarga e interpreta o manifest JSON co formato:
 /// { "latest": "1.0.2", "notes": "....", "url": "https://..." }
-Future<UpdateInfo?> fetchUpdateInfo(Uri manifestUrl) async {
-  final res = await http.get(manifestUrl);
-  if (res.statusCode != 200) return null;
-  final j = jsonDecode(res.body) as Map<String, dynamic>;
-  final latest = Version.parse(j['latest'] as String);
-  final notes  = (j['notes'] as String?) ?? '';
-  String url;
-  if (Platform.isWindows) {
-    url = (j['assets'] as Map)['windows'] as String;
-  } else if (Platform.isMacOS) {
-    url = (j['assets'] as Map)['macos'] as String;
-  } else {
-    url = (j['assets'] as Map)['windows'] as String; // fallback
+Future<UpdateInfo?> fetchUpdateInfo(Uri manifestUrl, {Duration timeout = _fetchTimeout}) async {
+  final httpClient = HttpClient()..connectionTimeout = timeout;
+  final client = IOClient(httpClient);
+
+  try {
+    final res = await client.get(manifestUrl).timeout(timeout);
+    if (res.statusCode != 200 || res.body.isEmpty) return null;
+
+    final j = jsonDecode(res.body) as Map<String, dynamic>;
+
+    final latestStr = j['latest'] as String?;
+    if (latestStr == null) return null;
+    final latest = Version.parse(latestStr);
+
+    final notes = (j['notes'] as String?) ?? '';
+
+    // Preferimos "assets" por plataforma; se non existe, caemos a "url".
+    final assets = (j['assets'] as Map?)?.cast<String, dynamic>() ?? const <String, dynamic>{};
+    String? url;
+    if (Platform.isWindows) {
+      url = assets['windows'] as String?;
+    } else if (Platform.isMacOS) {
+      url = assets['macos'] as String?;
+    } else {
+      url = assets['windows'] as String?; // fallback igual que no teu código
+    }
+    url ??= j['url'] as String?; // fallback extra por se existe "url" no manifest
+
+    if (url == null || url.isEmpty) return null;
+
+    return UpdateInfo(latest, url, notes);
+  } on TimeoutException {
+    debugPrint('Timeout conectando con $manifestUrl');
+    return null;
+  } on SocketException catch (e) {
+    debugPrint('Erro de socket: $e');
+    return null;
+  } on FormatException catch (e) {
+    debugPrint('JSON inválido no manifest: $e');
+    return null;
+  } catch (e, st) {
+    debugPrint('Erro inesperado en fetchUpdateInfo: $e\n$st');
+    return null;
+  } finally {
+    client.close();
   }
-  return UpdateInfo(latest, url, notes);
 }
 
 /// Compara a versión instalada coa do manifest (true se hai nova)
