@@ -102,7 +102,7 @@ Cos mesmos ficheiros:
 ![comprobación de formato PDF-A](imaxes/007%20comprobacion.png)
 
 
-#### Como reordenar
+#### Como reordenar
 
 Pinchas nas dúas linhas e reordena o ficheiro:
 
