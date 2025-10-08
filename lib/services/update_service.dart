@@ -56,24 +56,29 @@ Future<bool> isNewerThanInstalled(Version latest) async {
 /// - execútao con flags silenciosos de Inno Setup
 /// - pecha a app para permitir substituír ficheiros
 Future<void> runUpdaterWindows(UpdateInfo u) async {
-  try {
-    final tmp = await Directory.systemTemp.createTemp('up_');
-    final dest = File('${tmp.path}\\update_setup.exe');
+  // try {
+  //   final tmp = await Directory.systemTemp.createTemp('up_');
+  //   final dest = File('${tmp.path}\\update_setup.exe');
 
-    final req = http.Request('GET', Uri.parse(u.url));
-    final resp = await http.Client().send(req);
-    final sink = dest.openWrite();
-    await resp.stream.pipe(sink);
-    await sink.close();
+  //   final req = http.Request('GET', Uri.parse(u.url));
+  //   final resp = await http.Client().send(req);
+  //   final sink = dest.openWrite();
+  //   await resp.stream.pipe(sink);
+  //   await sink.close();
 
-    await Process.start(dest.path, const [
-      '/VERYSILENT', '/NORESTART', '/CLOSEAPPLICATIONS', '/RESTARTAPPLICATIONS'
-    ]);
+  //   await Process.start(dest.path, const [
+  //     '/VERYSILENT', '/NORESTART', '/CLOSEAPPLICATIONS', '/RESTARTAPPLICATIONS'
+  //   ]);
 
-    exit(0);
-  } catch (e) {
-    // opcional: log externo
-  }
+  //   exit(0);
+  // } catch (e) {
+  //   // opcional: log externo
+  // }
+
+  // polo de agora, que descargue o .exe
+  final uri = Uri.parse(u.url);
+  await launchUrl(uri, mode: LaunchMode.externalApplication);
+
 }
 
 /// Ruta simple en macOS: abrir a URL de descarga no navegador.
