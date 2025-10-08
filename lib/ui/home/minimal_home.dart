@@ -8,9 +8,17 @@ import 'package:desktop_drop/desktop_drop.dart';
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
+import 'package:pdf_merger_ocr_pdfa/constants.dart';
 
 import '../widgets/progress_log_dialog.dart';
 import '../widgets/success_result_dialog.dart';
+
+import '../../models/app_settings.dart';
+import '../../services/app_settings_store.dart';
+import '../pages/settings_page.dart';
+
+// actualizador
+import '../../services/update_service.dart';
 
 
 class MinimalHome extends StatefulWidget {
@@ -36,6 +44,11 @@ class _MinimalHomeState extends State<MinimalHome> {
 
   static const int fourGB = 4 * 1024 * 1024 * 1024; // 4 GiB
 
+  // timer para update
+  Timer? _updateTimer;
+
+
+
   // --- Bundled tools (Windows) ---
   // ignore: unused_field
   String? _bundleDir;         // base: <exeDir>\OCRmyPDFPortable
@@ -56,14 +69,37 @@ class _MinimalHomeState extends State<MinimalHome> {
   // Autoscroll Log
   late final ScrollController _logScroll;
 
+  final _settingsStore = AppSettingsStore();
+  AppSettings _settings = const AppSettings();
+
+
   @override
   void initState() {
     super.initState();
     _logScroll = ScrollController();
+    _settingsStore.load().then((s) {
+      if (mounted) setState(() => _settings = s);
+    });
+
+    // Comproba unha vez aos 2s do arranque
+    Future.delayed(const Duration(seconds: 2), () {
+      if (mounted) {
+        checkForUpdates(context, manifestUrl: kAppcastUrl);
+      }
+    });
+    // E cada 6 horas
+    _updateTimer = Timer.periodic(const Duration(hours: 6), (_) {
+      if (mounted) {
+        checkForUpdates(context, manifestUrl: kAppcastUrl);
+      }
+    });
   }
+
 
   @override
   void dispose() {
+    _updateTimer?.cancel();
+
     _logScroll.dispose();
     super.dispose();
   }
@@ -486,9 +522,9 @@ class _MinimalHomeState extends State<MinimalHome> {
           .transform(const LineSplitter())
           .listen((line) {
         last = DateTime.now();
-        if (line.trim().isNotEmpty) {
-          _logAdd('[stdout ocrmypdf] $line');
-        }
+          if (line.trim().isNotEmpty && _settings.logStdout) {
+            _logAdd('[stdout ocrmypdf] $line');
+          }
       });
 
       proc.stderr
@@ -496,9 +532,9 @@ class _MinimalHomeState extends State<MinimalHome> {
           .transform(const LineSplitter())
           .listen((line) {
         last = DateTime.now();
-        if (line.trim().isNotEmpty) {
-          _logAdd('[stderr ocrmypdf] $line');
-        }
+          if (line.trim().isNotEmpty && _settings.logStderr) {
+            _logAdd('[stderr ocrmypdf] $line');
+          }
       });
 
       final code = await proc.exitCode;
@@ -552,18 +588,21 @@ class _MinimalHomeState extends State<MinimalHome> {
     final ctrl = TaskProgressController();
     _activeCtrl = ctrl;
     // ignore: unawaited_futures
-     _genDialogFuture = showProgressLogDialog(context, ctrl, title: 'Xerando PDF…');
+    _genDialogFuture = showProgressLogDialog(context, ctrl, title: 'Xerando PDF…');
     _genDialogFuture!.then((_) async {
       if (_showSuccessOnGenClose && _successPath != null) {
-        await showSuccessResultDialog(context,
+        await showSuccessResultDialog(
+          context,
           savePath: _successPath!,
           sizeBytes: _successSize,
           pageCount: _successPages,
           pdfaLikely: _successPdfaLikely,
         );
         setState(() {
-          _files.clear();
-          _log = '';
+          _files.clear();              // SEMPRE se limpa a lista
+          if (!_settings.preserveLog) {
+            _log = '';                 // ← só se limpa o Log se NON está marcado conservar
+          }
           _progress = 0.0;
           _busy = false;
           _dragging = false;
@@ -571,6 +610,7 @@ class _MinimalHomeState extends State<MinimalHome> {
         _showSuccessOnGenClose = false;
       }
     });
+
     await Future.delayed(
         const Duration(milliseconds: 16)); // dar un frame para pintar o modal
 
@@ -616,13 +656,17 @@ class _MinimalHomeState extends State<MinimalHome> {
       try {
         // 1) Merge con qpdf...
         setState(() => _progress = 0.2);
-        final qpdfArgs = [
+        final List<String> qpdfArgs = [
+          ..._settings.buildQpdfWarnArgs(),
           '--empty',
           '--pages',
           ..._files.map((f) => f.path),
           '--',
           mergedRaw
         ];
+        final extraQ = _settings.parseFreeArgs(_settings.extraQpdfArgs);
+        qpdfArgs.insertAll(0, extraQ);
+
         // _logAdd('CMD: qpdf ${qpdfArgs.join(' ')}');
         final sw = Stopwatch()..start();
         final result = await _run('qpdf', qpdfArgs);
@@ -646,24 +690,19 @@ class _MinimalHomeState extends State<MinimalHome> {
 
         // 3) OCR + PDF/A + 200 dpi con ocrmypdf ...
         setState(() => _progress = 0.6);
-        final ocrArgs = [
-          '--output-type',
-          'pdfa',
-          '--optimize',
-          '3',
-          '--pdfa-image-compression',
-          'lossless',
-          '--jobs',
-          Platform.numberOfProcessors.toString(),
-          '--skip-text',
-          //'--redo-ocr',
-          '--oversample',
-          '200',
-          '-v',
-          '1',
+        final ocrArgs = <String>[
+          '--output-type', 'pdfa',
+          '--optimize', '3',
+          '--pdfa-image-compression', 'lossless',
+          '--jobs', Platform.numberOfProcessors.toString(),
+          ..._settings.buildOcrmypdfModeArgs(), // (--skip-text | --redo-ocr)
+          '--oversample', '200',
+          '-v', _settings.ocrmypdfVerbosity.toString(),
+          ..._settings.parseFreeArgs(_settings.extraOcrmypdfArgs),
           mergedRaw,
           mergedFinal,
         ];
+
         // _logAdd('CMD: ocrmypdf ${ocrArgs.join(' ')}');
         final sw2 = Stopwatch()..start();
         final okOcr =
@@ -735,6 +774,21 @@ class _MinimalHomeState extends State<MinimalHome> {
       appBar: AppBar(
         title: const Text('Unir PDF [Resultado: OCR · PDF/A (200 dpi)]'),
         centerTitle: true,
+        actions: [
+          IconButton(
+            tooltip: 'Axustes',
+            icon: const Icon(Icons.settings),
+            onPressed: () async {
+              final changed = await Navigator.of(context).push<bool>(
+                MaterialPageRoute(builder: (_) => const SettingsPage()),
+              );
+              if (changed == true) {
+                final s = await _settingsStore.load();
+                if (mounted) setState(() => _settings = s);
+              }
+            },
+          ),
+        ],
       ),
       body: Column(
         children: [

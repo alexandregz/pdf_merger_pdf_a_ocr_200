@@ -14,7 +14,11 @@ dependencies:
   path: ^1.9.0
   window_manager: ^0.5.1
   url_launcher: ^6.3.0
-
+  shared_preferences: ^2.3.2
+  # actualizacions
+  http: ^1.2.2
+  package_info_plus: ^8.0.2
+  pub_semver: ^2.1.4
 
 
 dev_dependencies:
