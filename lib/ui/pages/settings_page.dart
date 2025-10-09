@@ -64,10 +64,31 @@ class _SettingsPageState extends State<SettingsPage> {
           const Text('OCRmyPDF', style: TextStyle(fontWeight: FontWeight.bold)),
           const SizedBox(height: 8),
 
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // --- NOVO: interruptor para activar/desactivar OCRmyPDF ---
+              SwitchListTile.adaptive(
+                title: const Text('Executar OCRmyPDF'),
+                subtitle: const Text(
+                  'Se o desactivas, só se unen os PDF sen OCR nin PDF/A (máis rápido).',
+                ),
+                value: _settings.enableOcrmypdf,
+                onChanged: (v) {
+                  setState(() {
+                    _settings = _settings.copyWith(enableOcrmypdf: v);
+                  });
+                },
+              ),
+              const Divider(height: 24),
+              // … segue o resto dos axustes que xa tiñas (args ocrmypdf, qpdf, etc.)
+            ],
+          ),
+
           SegmentedButton<OCRMode>(
             segments: const [
               ButtonSegment(value: OCRMode.skipText, label: Text('--skip-text')),
-            ButtonSegment(value: OCRMode.redoOCR, label: Text('--redo-ocr')),
+              ButtonSegment(value: OCRMode.redoOCR, label: Text('--redo-ocr')),
             ],
             selected: {_settings.ocrMode},
             onSelectionChanged: (set) {

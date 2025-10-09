@@ -703,29 +703,32 @@ class _MinimalHomeState extends State<MinimalHome> {
 
         // 3) OCR + PDF/A + 200 dpi con ocrmypdf ...
         setState(() => _progress = 0.6);
-        final ocrArgs = <String>[
-          '--output-type', 'pdfa',
-          '--optimize', '3',
-          '--pdfa-image-compression', 'lossless',
-          '--jobs', Platform.numberOfProcessors.toString(),
-          ..._settings.buildOcrmypdfModeArgs(), // (--skip-text | --redo-ocr)
-          '--oversample', '200',
-          '-v', _settings.ocrmypdfVerbosity.toString(),
-          ..._settings.parseFreeArgs(_settings.extraOcrmypdfArgs),
-          mergedRaw,
-          mergedFinal,
-        ];
-
-        // _logAdd('CMD: ocrmypdf ${ocrArgs.join(' ')}');
-        final sw2 = Stopwatch()..start();
-        final okOcr =
-            await _runOcrmypdfStreaming(ocrArgs); // engadido (streaming)
-        _logAdd('ocrmypdf durou ${sw2.elapsed}');
-        if (!okOcr) {
-          _logAdd('ocrmypdf fallou. Abortando.');
-          _endModal(ok: false);
-          return;
+        if (_settings.enableOcrmypdf) {
+          final ocrArgs = [
+            '--output-type', 'pdfa',
+            '--optimize', '3',
+            '--pdfa-image-compression', 'lossless',
+            '--jobs', Platform.numberOfProcessors.toString(),
+            '--skip-text',
+            '--oversample', '200',
+            '-v', '1',
+            mergedRaw,
+            mergedFinal,
+          ];
+          // _logAdd('CMD: ocrmypdf ${ocrArgs.join(' ')}');
+          final sw2 = Stopwatch()..start();
+          final okOcr = await _runOcrmypdfStreaming(ocrArgs);
+          _logAdd('ocrmypdf durou ${sw2.elapsed}');
+          if (!okOcr) {
+            _logAdd('ocrmypdf fallou. Abortando.');
+            _endModal(ok: false);
+            return;
+          }
+        } else {
+          _logAdd('Axustes: OCRmyPDF desactivado → omitindo OCR/PDF-A e copiando tal cal.');
+          await File(mergedRaw).copy(mergedFinal);
         }
+
 
         // 4) Límite final e gardar
         final fSize = File(mergedFinal).lengthSync();

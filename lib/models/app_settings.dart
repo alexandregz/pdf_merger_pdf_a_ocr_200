@@ -13,6 +13,8 @@ class AppSettings {
   final bool preserveLog;              // preserva logs ao finalizar e so limpa lista de arquivos na ventana principal
   final bool logStdout;                // stdout ocrmypdf
   final bool logStderr;                // stderr ocrmypdf
+  final bool enableOcrmypdf;           // habilitar/deshabilitar uso ocrmypdf
+
 
   const AppSettings({
     this.ocrMode = OCRMode.skipText,
@@ -21,8 +23,9 @@ class AppSettings {
     this.qpdfWarnMode = QpdfWarnMode.normal,
     this.extraQpdfArgs = '',
     this.preserveLog = false,
-    this.logStdout = true,   // por defecto activado
-    this.logStderr = true,   // para primeiras versions empregadas por users saco todo output, despois a quitar
+    this.logStdout = true,      // por defecto activado
+    this.logStderr = true,      // para primeiras versions empregadas por users saco todo output, despois a quitar
+    this.enableOcrmypdf = true,
   });
 
   AppSettings copyWith({
@@ -34,6 +37,7 @@ class AppSettings {
     bool? preserveLog,
     bool? logStdout,
     bool? logStderr,
+    bool? enableOcrmypdf,
   }) {
     return AppSettings(
       ocrMode: ocrMode ?? this.ocrMode,
@@ -44,6 +48,7 @@ class AppSettings {
       preserveLog: preserveLog ?? this.preserveLog,
       logStdout: logStdout ?? this.logStdout,
       logStderr: logStderr ?? this.logStderr,
+      enableOcrmypdf: enableOcrmypdf ?? this.enableOcrmypdf,
     );
   }
 
@@ -91,6 +96,7 @@ class AppSettings {
         'preserveLog': preserveLog,
         'logStdout': logStdout,
         'logStderr': logStderr,
+        'enableOcrmypdf': enableOcrmypdf,
       };
 
   static AppSettings fromJson(Map<String, Object?> map) {
@@ -111,6 +117,7 @@ class AppSettings {
       preserveLog: (map['preserveLog'] as bool?) ?? false,
       logStdout: (map['logStdout'] as bool?) ?? true,
       logStderr: (map['logStderr'] as bool?) ?? false,
+      enableOcrmypdf: (map['enableOcrmypdf'] as bool?) ?? false,
     );
   }
 }
