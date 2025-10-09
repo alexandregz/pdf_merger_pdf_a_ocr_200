@@ -787,34 +787,50 @@ class _MinimalHomeState extends State<MinimalHome> {
       appBar: AppBar(
         title: const Text('Unir PDF [Resultado: OCR · PDF/A (200 dpi)]'),
         centerTitle: true,
-        actions: [
-          Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              IconButton(
-                tooltip: 'Axustes',
-                icon: const Icon(Icons.settings),
-                onPressed: () async {
-                  final changed = await Navigator.of(context).push<bool>(
-                    MaterialPageRoute(builder: (_) => const SettingsPage()),
-                  );
-                  if (changed == true) {
-                    final s = await _settingsStore.load();
-                    if (mounted) setState(() => _settings = s);
-                  }
-                },
-              ),
-              if (version != null)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 4),
-                  child: Text(
-                    'v$version',
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                ),
-            ],
+
+actions: [
+  Padding(
+    padding: const EdgeInsets.only(right: 8),
+    child: SizedBox(
+      height: kToolbarHeight, // non supera a altura do AppBar
+      width: 56,              // ancho típico dun action
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          SizedBox(
+            height: 24, // fai o botón compacto
+            child: IconButton(
+              tooltip: 'Axustes',
+              icon: const Icon(Icons.settings),
+              iconSize: 20,
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(), // elimina o mínimo 48x48
+              onPressed: () async {
+                final changed = await Navigator.of(context).push<bool>(
+                  MaterialPageRoute(builder: (_) => const SettingsPage()),
+                );
+                if (changed == true) {
+                  final s = await _settingsStore.load();
+                  if (mounted) setState(() => _settings = s);
+                }
+              },
+            ),
           ),
+          const SizedBox(height: 2),
+          if (version != null)
+            Text(
+              'v.$version',
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(fontSize: 10),
+              overflow: TextOverflow.fade,
+              softWrap: false,
+            ),
         ],
+      ),
+    ),
+  ),
+],
+
+
 
       ),
       body: Column(
