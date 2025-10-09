@@ -67,6 +67,14 @@ Xunta PDFs nun só según os requerimentos dos xulgados
 - en `windows` emprega `ocrmypdf` autocontido en proxecto propio: https://github.com/alexandregz/ocrmypdf_portable_windows
 
 
+## Construir versionado en windows
+
+- versionar con `pubspec.yaml`
+- `flutter clean` e `flutter build windows`
+- empregar `inno/get_version.ps1` para pasar version a `installer.iss`
+- a app queda en `inno/dist/`
+
+
 ## Utilidades
 
 - Validador PDF/A online: https://www.pdf2go.com/validate-pdfa
