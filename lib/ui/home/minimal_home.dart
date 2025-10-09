@@ -20,6 +20,8 @@ import '../pages/settings_page.dart';
 // actualizador
 import '../../services/update_service.dart';
 
+import 'package:package_info_plus/package_info_plus.dart';
+
 
 class MinimalHome extends StatefulWidget {
   const MinimalHome({super.key});
@@ -46,6 +48,15 @@ class _MinimalHomeState extends State<MinimalHome> {
 
   // timer para update
   Timer? _updateTimer;
+
+  String? version;
+
+  Future<void> _loadVersion() async {
+    final info = await PackageInfo.fromPlatform();
+    setState(() {
+      version = info.version; // ou '${info.version}+${info.buildNumber}'
+    });
+  }
 
 
 
@@ -80,6 +91,8 @@ class _MinimalHomeState extends State<MinimalHome> {
     _settingsStore.load().then((s) {
       if (mounted) setState(() => _settings = s);
     });
+
+    _loadVersion();
 
     // Comproba unha vez aos 2s do arranque
     Future.delayed(const Duration(seconds: 2), () {
@@ -775,20 +788,34 @@ class _MinimalHomeState extends State<MinimalHome> {
         title: const Text('Unir PDF [Resultado: OCR · PDF/A (200 dpi)]'),
         centerTitle: true,
         actions: [
-          IconButton(
-            tooltip: 'Axustes',
-            icon: const Icon(Icons.settings),
-            onPressed: () async {
-              final changed = await Navigator.of(context).push<bool>(
-                MaterialPageRoute(builder: (_) => const SettingsPage()),
-              );
-              if (changed == true) {
-                final s = await _settingsStore.load();
-                if (mounted) setState(() => _settings = s);
-              }
-            },
+          Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              IconButton(
+                tooltip: 'Axustes',
+                icon: const Icon(Icons.settings),
+                onPressed: () async {
+                  final changed = await Navigator.of(context).push<bool>(
+                    MaterialPageRoute(builder: (_) => const SettingsPage()),
+                  );
+                  if (changed == true) {
+                    final s = await _settingsStore.load();
+                    if (mounted) setState(() => _settings = s);
+                  }
+                },
+              ),
+              if (version != null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Text(
+                    'v$version',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ),
+            ],
           ),
         ],
+
       ),
       body: Column(
         children: [
