@@ -19,7 +19,7 @@ Xunta PDFs nun só según os requerimentos dos xulgados
 - **Controla o límite de 4 GB** con estimación previa e comprobacións reais
 - UI simple con progreso e opcións básicas
 
-> **Dependencias externas (gratuítas):** `qpdf`, `ocrmypdf`, `tesseract`, `ghostscript` deben estar instalados e no PATH. En macOS pódese vía Homebrew: `brew install qpdf ocrmypdf tesseract ghostscript`. A 2025-09-28 os paths están hardcodeados para desenvolvemento en macos, ver `const candidates` en _which()
+> **Dependencias externas (gratuítas):** `qpdf`, `ocrmypdf`, `tesseract`, `ghostscript` deben estar instalados e no PATH. En macOS pódese vía Homebrew: `brew install qpdf ocrmypdf tesseract ghostscript`. En windows empréganse versión autocontidas (ver https://github.com/alexandregz/ocrmypdf_portable_windows)
 
 
 ## Dependencias
@@ -42,13 +42,31 @@ Xunta PDFs nun só según os requerimentos dos xulgados
    - **OCR + PDF/A + 200 dpi** con `ocrmypdf` → comproba tamaño
    - Garda o resultado
 
+Pódese desactivar o uso de `ocrmypdf` e simplemente unir PDFs con `qpdf`.
 
 ## Personalizacións
 
-- **Tipo de PDF/A**: `ocrmypdf` xera PDF/A-2b por defecto. Podes engadir flags adicionais (ex.: `--pdfa-1`, `--pdfa-3`) se a túa versión os soporta, modificando `_ocrPdfA`.
+- **Tipo de PDF/A**: `ocrmypdf` xera PDF/A-2b por defecto. Podes engadir flags adicionais (ex.: `--pdfa-1`, `--pdfa-3`) se a túa versión os soporta, engadindo parámetros adicionas en `Axustes`.
 - **Idiomas OCR**: cambia `_settings.ocrLanguages` (ex.: `glg+spa+por+eng`). Debes ter os datos de idioma instalados en Tesseract.
 - **Optimización de tamaño**: axusta `_settings.optimizeLevel` (0–3). 3 é máis agresivo.
 
+## Desactivado ocrmypdf
+
+En `Axustes` pódese desactivar o uso de ocrmypdf, así como personalizar o uso con parámetros.
+
+Como exemplo, combinando 3 PDFs pequenos:
+
+- Sen ocrmypdf:
+```
+Feito en 0:00:00.086811. Gardado en: /Users/alex/Desktop/documento_final.pdf
+```
+
+- Con ocrmypdf:
+```
+ocrmypdf durou 0:00:10.411909
+Tamaño final: 1.12 MB
+Feito en 0:00:10.610828. Gardado en: /Users/alex/Desktop/documento_final.pdf
+```
 
 
 ## Dependencias
@@ -65,7 +83,11 @@ Xunta PDFs nun só según os requerimentos dos xulgados
 - **OCR**: os argumentos actuais están en `ocrArgs`, por se cómpre revisalos
 - **Tipo de PDF/A**: `ocrmypdf` xera PDF/A-2b por defecto. Poderíanse engadir flags adicionais (ex.: `--pdfa-1`, `--pdfa-3`) se a versión os soporta.
 - en `windows` emprega `ocrmypdf` autocontido en proxecto propio: https://github.com/alexandregz/ocrmypdf_portable_windows
+- Pódese empregar `--redo-ocr` en `ocrmypdf` como parámetro en lugar de `--skip-text` (opción empregada por defecto). Empregando `--skip-text`, un PDF de 33M e 170 pax mergeado con outro de 3M e 374 pax. de texto e outro de 300K en lugar de empregar 15 minutos tarda 45 segundos e segue a devolver un PDF/A OCR. Pola contra con `--redo-ocr` convirte en lexible todas as páxinas ainda sen o ser no orixinal.
 
+Cos mesmos ficheiros:
+- `--skip-text` ==  `Feito en 0:00:45.114569` (45 seg.)
+- `--redo-ocr` == `Feito en 0:16:50.251696` (16 min.)
 
 ## Construir versionado en windows
 
@@ -79,17 +101,6 @@ Xunta PDFs nun só según os requerimentos dos xulgados
 
 - Validador PDF/A online: https://www.pdf2go.com/validate-pdfa
 - Validador PDF/A online: https://www.pdfforge.org/online/en/validate-pdfa
-
-
-
-## ToDo
-
-- **Windows**: control de todas as dependencias, o usuario non debe ter que instalar nada.
-- Opción de empregar `--redo-ocr` en `ocrmypdf` como parámetro en lugar de `--skip-text`. Agora mesmo empregando `--skip-text`, un PDF de 33M e 170 pax mergeado con outro de 3M e 374 pax. de texto e outro de 300K en lugar de empregar 15 minutos tarda 45 segundos e segue a devolver un PDF/A OCR. Pola contra con `--redo-ocr` convirte en lexible todas as páxinas ainda sen o ser no orixinal.
-
-Cos mesmos ficheiros:
-- `--skip-text` ==  `Feito en 0:00:45.114569` (45 seg.)
-- `--redo-ocr` == `Feito en 0:16:50.251696` (16 min.)
 
 
 
@@ -124,3 +135,15 @@ Para eliminar un ficheiro do documento final, simplemente pincha na cruz á dere
 ![eliminar](imaxes/009%20eliminar%20ficheiro.png)
 
 ![eliminado](imaxes/010%20eliminar%20ficheiro.png)
+
+
+### Axustes
+
+![botón Axustes](imaxes/011%20axustes.png)
+
+![Axustes](imaxes/012%20axustes.png)
+
+![Axustes abaixo](imaxes/013%20axustes.png)
+
+macos:
+![Acerca de](imaxes/014%20about.png)
