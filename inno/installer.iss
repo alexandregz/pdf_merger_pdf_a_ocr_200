@@ -4,8 +4,8 @@
 [Setup]
 AppId={{3E6F5B8A-2A19-4D7A-8E3B-7A6D5B2B1F3C}
 AppName=CIG Combinador PDF - OCR · PDF/A
-AppVersion={#AppVersionName}             ; versión que ve o usuario (en add/remove/...)
-VersionInfoVersion={#AppVersionName}     ; versión embebida no instalador
+AppVersion={#AppVersion}
+;VersionInfoVersion={#VersionInfoVersion}        ; sempre 4 números, embebida
 AppPublisher=CIG
 AppPublisherURL=https://cig.gal
 DefaultDirName={localappdata}\CIG\CombinadorPDF
@@ -14,7 +14,7 @@ DisableDirPage=no
 DisableProgramGroupPage=no
 OutputDir=dist
 OutputBaseFilename=CIG-CombinadorPDF-Setup
-SetupIconFile=windows\runner\resources\app_icon.ico
+SetupIconFile=../windows\runner\resources\app_icon.ico
 Compression=lzma2
 SolidCompression=yes
 ArchitecturesAllowed=x64
@@ -34,10 +34,10 @@ Name: "desktopicon"; Description: "Crear icona no Escritorio"; GroupDescription:
 [Files]
 ; 1) App Flutter (carpeta Release completa para non esquecer DLLs)
 ;    Se prefires ser estrito, cambia pola lista de DLLs necesarias + o .exe
-Source: "build\windows\x64\runner\Release\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ignoreversion
+Source: "..\build\windows\x64\runner\Release\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ignoreversion
 
 ; 2) OCRmyPDFPortable autocontido (debe vivir xunto ao .exe)
-Source: "windows\OCRmyPDFPortable\*"; DestDir: "{app}\OCRmyPDFPortable"; Flags: recursesubdirs createallsubdirs ignoreversion
+Source: "..\windows\OCRmyPDFPortable\*"; DestDir: "{app}\OCRmyPDFPortable"; Flags: recursesubdirs createallsubdirs ignoreversion
 
 [Icons]
 Name: "{group}\CIG Combinador PDF"; Filename: "{app}\pdf_merger_ocr_pdfa.exe"; IconFilename: "{app}\pdf_merger_ocr_pdfa.exe"
