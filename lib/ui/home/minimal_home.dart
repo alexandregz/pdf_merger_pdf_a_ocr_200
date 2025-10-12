@@ -516,6 +516,22 @@ class _MinimalHomeState extends State<MinimalHome> {
       return false;
     }
 
+    // engade o env para Ghostscript e Tesseract
+    final env = Map<String, String>.from(Platform.environment)
+      ..putIfAbsent('PYTHONUNBUFFERED', () => '1')
+      ..putIfAbsent('OCRMYPDF_GS', () => _tool['gs'] ?? '')
+      ..putIfAbsent('OCRMYPDF_TESSERACT', () => _tool['tesseract'] ?? '');
+
+    // opcional: reforza PATH coas carpetas dos vendors resoltas
+    final extra = <String>[
+      if ((_tool['gs'] ?? '').isNotEmpty) File(_tool['gs']!).parent.path,
+      if ((_tool['tesseract'] ?? '').isNotEmpty) File(_tool['tesseract']!).parent.path,
+      if ((_tool['qpdf'] ?? '').isNotEmpty) File(_tool['qpdf']!).parent.path,
+    ].where((p) => p.isNotEmpty).join(';');
+
+    env['PATH'] = extra.isEmpty ? (env['PATH'] ?? '') : ('$extra;${env['PATH'] ?? ''}');
+
+    // -----
     _logAdd('Exec (stream): $exe ${args.join(' ')}');
 
     Process? proc;
