@@ -131,7 +131,7 @@ class _SettingsPageState extends State<SettingsPage> {
           const SizedBox(height: 8),
 
           DropdownButtonFormField<QpdfWarnMode>(
-            value: _settings.qpdfWarnMode,
+            initialValue: _settings.qpdfWarnMode,
             decoration: const InputDecoration(
               labelText: 'Advertencias',
               border: OutlineInputBorder(),

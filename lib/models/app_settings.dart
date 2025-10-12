@@ -80,7 +80,7 @@ class AppSettings {
     final r = RegExp(r'''("([^"]*)"|'([^']*)'|[^\s]+)''');
     final out = <String>[];
     for (final m in r.allMatches(s)) {
-      final g = (m.group(2) ?? m.group(3) ?? m.group(0)!)!;
+      final g = (m.group(2) ?? m.group(3) ?? m.group(0)!);
       out.add(g.replaceAll('"', '').replaceAll("'", ''));
     }
     return out;
