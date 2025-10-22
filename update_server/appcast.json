@@ -1,9 +1,9 @@
 {
-  "latest": "1.0.2",
-  "notes": "Corrección de erros e melloras.",
+  "latest": "1.0.4",
+  "notes": "Crea indice con ligazons",
   "assets": {
-    "windows": "https://tereborace.com/CIG/CombinadorPDFs/CIG-CombinadorPDF-Setup-1.0.2.exe",
-    "macos_old_local": "http://127.0.0.1:7000/CIG-CombinadorPDF-1.0.2.dmg",
-    "macos": "https://tereborace.com/CIG/CombinadorPDFs/CIG-CombinadorPDF-1.0.2.dmg"
+    "windows": "https://tereborace.com/CIG/CombinadorPDFs/CIG-CombinadorPDF-Setup-1.0.4.exe",
+    "macos_old_local": "http://127.0.0.1:7000/CIG-CombinadorPDF-1.0.4.dmg",
+    "macos": "https://tereborace.com/CIG/CombinadorPDFs/CIG-CombinadorPDF-1.0.4.dmg"
   }
 }

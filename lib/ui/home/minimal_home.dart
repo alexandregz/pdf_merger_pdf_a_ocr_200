@@ -22,6 +22,8 @@ import '../../services/update_service.dart';
 
 import 'package:package_info_plus/package_info_plus.dart';
 
+import '../../tools/pdf_toc.dart';
+
 
 class MinimalHome extends StatefulWidget {
   const MinimalHome({super.key});
@@ -680,7 +682,19 @@ class _MinimalHomeState extends State<MinimalHome> {
       final swTotal = Stopwatch()..start();
       final tmp = await Directory.systemTemp.createTemp('pdfmerge_min_');
       final mergedRaw = p.join(tmp.path, 'merged_raw.pdf');
+      final mergedOCR = p.join(tmp.path, 'merged_ocr.pdf');
       final mergedFinal = p.join(tmp.path, 'merged_final.pdf');
+
+      // Precalcular títulos e páxinas por documento
+      final List<String> _titles = _files.map((f) => p.basename(f.path)).toList(growable: false);
+      final List<int> _pageCounts = [];
+      for (final f in _files) {
+        try {
+          _pageCounts.add(await countPagesOfFile(f.path));
+        } catch (_) {
+          _pageCounts.add(0);
+        }
+      }
 
       try {
         // 1) Merge con qpdf...
@@ -708,6 +722,7 @@ class _MinimalHomeState extends State<MinimalHome> {
           return;
         }
 
+
         // 2) Límite 4GB despois de unir
         final mSize = File(mergedRaw).lengthSync();
         _logAdd('Tamaño tras unión: ${_fmt(mSize)}');
@@ -729,7 +744,7 @@ class _MinimalHomeState extends State<MinimalHome> {
             '--oversample', '200',
             '-v', '1',
             mergedRaw,
-            mergedFinal,
+            mergedOCR,
           ];
           // _logAdd('CMD: ocrmypdf ${ocrArgs.join(' ')}');
           final sw2 = Stopwatch()..start();
@@ -742,11 +757,29 @@ class _MinimalHomeState extends State<MinimalHome> {
           }
         } else {
           _logAdd('Axustes: OCRmyPDF desactivado → omitindo OCR/PDF-A e copiando tal cal.');
-          await File(mergedRaw).copy(mergedFinal);
+          await File(mergedRaw).copy(mergedOCR);
         }
 
 
-        // 4) Límite final e gardar
+        // 4) Inserir as páxinas de ÍNDICE coas ligazóns
+        setState(() => _progress = 0.45);
+        String mergedWithToc;
+        try {
+          mergedWithToc = await insertTocAtBeginning(
+            inputPath: mergedOCR,
+            titles: _titles,
+            pageCounts: _pageCounts,
+          );
+          // Sobrescribe mergedRaw co novo con índice
+          await File(mergedWithToc).copy(mergedFinal);
+          _logAdd('Índice inserido correctamente.');
+        } catch (e, st) {
+          _logAdd('Erro creando índice TOC: $e\n$st');
+          _endModal(ok: false);
+          return;
+        }
+
+        // 5) Límite final e gardar
         final fSize = File(mergedFinal).lengthSync();
         final pages = await _getPageCount(mergedFinal);
         _logAdd('Tamaño final: ${_fmt(fSize)}');
@@ -769,7 +802,7 @@ class _MinimalHomeState extends State<MinimalHome> {
         _logAdd(st.toString());
       } finally {
         try {
-          await tmp.delete(recursive: true);
+          await Directory(tmp.path).delete(recursive: true);
         } catch (_) {}
         setState(() {
           _busy = false;
