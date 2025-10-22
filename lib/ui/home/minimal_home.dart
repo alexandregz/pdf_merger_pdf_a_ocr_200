@@ -168,6 +168,49 @@ class _MinimalHomeState extends State<MinimalHome> {
     }
   }
 
+  // ---------- ENV para OCR (macOS) ----------
+  /// PATH mínimo e estable para macOS con Homebrew (e fallback Intel)
+  static const String _brewSafePath =
+      '/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/local/sbin:/usr/bin:/bin:/usr/sbin:/sbin';
+
+  /// ENV limpo para procesos externos que precisan ver Homebrew no PATH.
+  /// Non toca nada máis; só sobreescribe PATH e (se existe) TESSDATA_PREFIX.
+  Map<String, String> _envForOcr() {
+    final env = Map<String, String>.from(Platform.environment);
+
+    // 1) PATH: garantimos que Homebrew vai por diante, sen expandir nin resolver ligazóns
+    env['PATH'] = _brewSafePath;
+
+    // 2) TESSDATA_PREFIX (opcional pero útil). Non facemos comprobacións nin symlinks:
+    //    poñemos a ruta estándar de Homebrew, e se non existe tampouco molesta.
+    env.putIfAbsent('TESSDATA_PREFIX', () => '/opt/homebrew/share');
+
+    return env;
+  }
+
+  /// Diagnóstico: comproba que 'tesseract' é visible no mesmo ENV que lle pasaremos a ocrmypdf.
+  Future<void> _debugLogPathVisibility() async {
+    try {
+      final env = _envForOcr();
+
+      // Mostra o PATH efectivo
+      stdout.writeln('[debug] PATH para procesos: ${env['PATH']}');
+
+      // which tesseract
+      final which = await Process.run('/usr/bin/which', ['tesseract'], environment: env);
+      stdout.writeln('[debug] which tesseract -> exit=${which.exitCode} · ${which.stdout}'.trim());
+
+      // tesseract --version (non é obrigatorio, pero confirma execución)
+      final tv = await Process.run('tesseract', ['--version'], environment: env);
+      stdout.writeln('[debug] tesseract --version -> exit=${tv.exitCode}');
+      if (tv.stdout is String && (tv.stdout as String).isNotEmpty) {
+        stdout.writeln(((tv.stdout as String).split('\n')..length = 1).join('\n'));
+      }
+    } catch (e) {
+      stdout.writeln('[debug] erro probando PATH/Tesseract: $e');
+    }
+  }
+
   // ---------- Bundled helpers (Windows) ----------
   String _exeDir() => p.dirname(Platform.resolvedExecutable);
 
@@ -374,16 +417,27 @@ class _MinimalHomeState extends State<MinimalHome> {
 
       return null;
     } else {
-      // Unix/macOS: usa o shell de login para obter PATH real do usuario
+      // 0) Proba primeiro co PATH que realmente usará o proceso fillo
+      final env = _envWithBundle();
+      final sep = ':';
+      final parts = (env['PATH'] ?? '').split(sep).where((s) => s.isNotEmpty);
+      for (final d in parts) {
+        final cand = p.normalize('$d/$name');
+        if (File(cand).existsSync()) return cand;
+      }
+
+      // 1) Logo pregunta ao shell de login do usuario (zsh -lc)
       final res = await _runInLoginShell('command -v ${_sh(name)} || true');
       if (res.exitCode == 0) {
         final out = (res.stdout as String).trim();
         if (out.isNotEmpty && out != name) return out;
       }
+
+      // 2) Finalmente, candidatos típicos
       const candidates = [
         '/opt/homebrew/bin', // Apple Silicon (Homebrew)
-        '/usr/local/bin', // Intel (Homebrew)
-        '/opt/local/bin', // MacPorts
+        '/usr/local/bin',    // Intel (Homebrew)
+        '/opt/local/bin',    // MacPorts
         '/usr/bin', '/bin',
         '/Library/Frameworks/Python.framework/Versions/3.12/bin',
         '/Library/Frameworks/Python.framework/Versions/3.11/bin',
@@ -536,9 +590,45 @@ class _MinimalHomeState extends State<MinimalHome> {
     // -----
     _logAdd('Exec (stream): $exe ${args.join(' ')}');
 
+
+    // exec con streaming de ocrymypdf
     Process? proc;
     try {
-      proc = await Process.start(exe, args, environment: _envWithBundle());
+      // ENV final:
+      final envBase = Map<String, String>.from(_envWithBundle());
+
+      // --- Engade rutas típicas en macOS/Linux para garantir que tesseract é visible ---
+      if (!Platform.isWindows) {
+        const extraUnixPaths =
+            '/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin';
+        final sep = ':';
+        final currentPath = envBase['PATH'] ?? '';
+        envBase['PATH'] = '$extraUnixPaths$sep$currentPath';
+
+        // Se atopamos tesseract, forzamos a súa carpeta por diante
+        final tess = _tool['tesseract'];
+        if (tess != null && tess.isNotEmpty && File(tess).existsSync()) {
+          final tessDir = File(tess).parent.path;
+          envBase['PATH'] = '$tessDir$sep${envBase['PATH']}';
+        }
+
+        // TESSDATA_PREFIX: establece un valor estándar se non existe, para evitar erros quitamos /opt/homebrew/share
+        envBase.putIfAbsent('TESSDATA_PREFIX', () => '/opt/homebrew/share/tessdata');
+      }
+
+      // --- Engade variables de entorno específicas para ocrmypdf ---
+      envBase['PYTHONUNBUFFERED'] = '1';
+      if ((_tool['gs'] ?? '').isNotEmpty) {
+        envBase['OCRMYPDF_GS'] = _tool['gs']!;
+      }
+      if ((_tool['tesseract'] ?? '').isNotEmpty) {
+        envBase['OCRMYPDF_TESSERACT'] = _tool['tesseract']!;
+      }
+
+      _logAdd('Exec (stream): $exe ${args.join(' ')}');
+      _logAdd('[debug PATH usado: ${envBase['PATH']}]');
+
+      proc = await Process.start(exe, args, environment: envBase);
 
       DateTime last = DateTime.now();
       final timer = Timer.periodic(const Duration(seconds: 30), (_) {
@@ -553,9 +643,9 @@ class _MinimalHomeState extends State<MinimalHome> {
           .transform(const LineSplitter())
           .listen((line) {
         last = DateTime.now();
-          if (line.trim().isNotEmpty && _settings.logStdout) {
-            _logAdd('[stdout ocrmypdf] $line');
-          }
+        if (line.trim().isNotEmpty && _settings.logStdout) {
+          _logAdd('[stdout ocrmypdf] $line');
+        }
       });
 
       proc.stderr
@@ -563,9 +653,9 @@ class _MinimalHomeState extends State<MinimalHome> {
           .transform(const LineSplitter())
           .listen((line) {
         last = DateTime.now();
-          if (line.trim().isNotEmpty && _settings.logStderr) {
-            _logAdd('[stderr ocrmypdf] $line');
-          }
+        if (line.trim().isNotEmpty && _settings.logStderr) {
+          _logAdd('[stderr ocrmypdf] $line');
+        }
       });
 
       final code = await proc.exitCode;
@@ -731,6 +821,9 @@ class _MinimalHomeState extends State<MinimalHome> {
           _endModal(ok: false);
           return;
         }
+
+        // (opcional) imprime diagnóstico 1 vez antes do primeiro OCR
+        await _debugLogPathVisibility();
 
         // 3) OCR + PDF/A + 200 dpi con ocrmypdf ...
         setState(() => _progress = 0.6);
