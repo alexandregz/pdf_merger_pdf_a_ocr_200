@@ -28,13 +28,13 @@ flutter clean
 flutter pub get
 flutter build macos --release
 
-APP_PATH="build/macos/Build/Products/Release/Runner.app"
+APP_PATH="build/macos/Build/Products/Release/$APP_NAME.app"
 if [[ ! -d "$APP_PATH" ]]; then
   echo "Non atopo $APP_PATH — revisa o build"; exit 1
 fi
 
 echo "==> 3) Verificar que o binario é universal"
-ARCHS=$(lipo -archs "$APP_PATH/Contents/MacOS/Runner")
+ARCHS=$(lipo -archs "$APP_PATH/Contents/MacOS/$APP_NAME")
 echo "Arquitecturas atopadas: $ARCHS"
 echo "$ARCHS" | grep -q "x86_64" || { echo "Falta x86_64"; exit 1; }
 echo "$ARCHS" | grep -q "arm64"  || { echo "Falta arm64";  exit 1; }
@@ -89,17 +89,17 @@ echo
 # codesign --deep --force --options runtime --timestamp --sign "$CERT" "$APP_NAMED"
 # codesign --verify --deep --strict --verbose=2 "$APP_NAMED"
 #
-# echo "==> [DEV ID] Crear de novo o DMG asinando a app oficial"
-# rm -f "$DMG_NAME"
-# create-dmg \
-#   --volname "$APP_NAME" \
-#   --window-pos 200 120 \
-#   --window-size 600 400 \
-#   --icon-size 120 \
-#   --app-drop-link 425 200 \
-#   --icon "${APP_NAME}.app" 175 200 \
-#   "$DMG_NAME" \
-#   "$APP_NAMED"
+echo "==> [DEV ID] Crear de novo o DMG asinando a app oficial"
+rm -f "$DMG_NAME"
+create-dmg \
+  --volname "$APP_NAME" \
+  --window-pos 200 120 \
+  --window-size 600 400 \
+  --icon-size 120 \
+  --app-drop-link 425 200 \
+  --icon "${APP_NAME}.app" 175 200 \
+  "$DMG_NAME" \
+  "$APP_NAMED"
 #
 # echo "==> [DEV ID] Enviar a notarización e esperar resultado"
 # xcrun notarytool submit "$DMG_NAME" --keychain-profile "notary-profile" --wait

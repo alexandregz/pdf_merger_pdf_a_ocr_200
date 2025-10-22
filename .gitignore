@@ -2,6 +2,9 @@
 dist/*
 inno/dist/*
 
+# create-dmg, que o crea na raiz
+*.dmg
+
 # Created by https://www.toptal.com/developers/gitignore/api/macos,vim,visualstudiocode,flutter,dart
 # Edit at https://www.toptal.com/developers/gitignore?templates=macos,vim,visualstudiocode,flutter,dart
 
