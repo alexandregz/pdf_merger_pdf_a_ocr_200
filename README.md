@@ -139,7 +139,7 @@ Building macOS application...
 ==> 3) Verificar que o binario é universal
 Arquitecturas atopadas: x86_64 arm64
 
-==> 4) Assinado ad-hoc (non elimina avisos en Macs alleos, pero deixa a app correcta)
+==> 4) Asinar ad-hoc (sen hardened runtime)
 build/macos/Build/Products/Release/CIG Combinador PDF.app: replacing existing signature
 --prepared:/Users/alex/Development/flutter/pdf_merger_pdf_a_ocr_200/build/macos/Build/Products/Release/CIG Combinador PDF.app/Contents/Frameworks/shared_preferences_foundation.framework/Versions/Current/.
 --prepared:/Users/alex/Development/flutter/pdf_merger_pdf_a_ocr_200/build/macos/Build/Products/Release/CIG Combinador PDF.app/Contents/Frameworks/desktop_drop.framework/Versions/Current/.

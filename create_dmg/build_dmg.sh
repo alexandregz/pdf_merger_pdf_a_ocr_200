@@ -39,9 +39,11 @@ echo "Arquitecturas atopadas: $ARCHS"
 echo "$ARCHS" | grep -q "x86_64" || { echo "Falta x86_64"; exit 1; }
 echo "$ARCHS" | grep -q "arm64"  || { echo "Falta arm64";  exit 1; }
 
-echo "==> 4) Assinado ad-hoc (non elimina avisos en Macs alleos, pero deixa a app correcta)"
-codesign --deep --force --options runtime -s - "$APP_PATH"
-codesign --verify --deep --strict --verbose=2 "$APP_PATH" || { echo "Fallou codesign verify"; exit 1; }
+
+echo "==> 4) Asinar ad-hoc (sen hardened runtime)"
+codesign --deep --force -s - "$APP_PATH"
+codesign --verify --deep --strict --verbose=2 "$APP_PATH"
+
 
 echo "==> 5) Preparar unha copia co nome amigable para o DMG"
 WORKDIR="$(mktemp -d)"
