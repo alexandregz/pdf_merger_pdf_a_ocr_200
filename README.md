@@ -93,7 +93,10 @@ Cos mesmos ficheiros:
 
 - versionar con `pubspec.yaml`
 - `flutter clean` e `flutter build windows`
-- empregar `inno/get_version.ps1` para pasar version a `installer.iss`
+- empregar `inno/get_version.ps1` (dentro do directorio) para pasar version a `installer.iss`:
+```powershell
+PS C:\Users\aemen\develop\pdf_merger_pdf_a_ocr_200\inno> .\get_version.ps1
+```
 - a app queda en `inno/dist/`
 
 ## Construir versionado en macos
