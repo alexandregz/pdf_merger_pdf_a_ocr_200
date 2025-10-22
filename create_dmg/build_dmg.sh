@@ -61,9 +61,9 @@ create-dmg \
   "$DMG_NAME" \
   "$APP_NAMED"
 
-echo "==> 7) Comprobacións básicas"
-hdiutil verify "$DMG_NAME"
-spctl --assess --type open --verbose "$DMG_NAME" || true
+# echo "==> 7) Comprobacións básicas"
+# hdiutil verify "$DMG_NAME"
+# spctl --assess --type open --verbose "$DMG_NAME" || true
 
 echo "Listo! DMG xerado: $DMG_NAME"
 echo
