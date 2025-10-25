@@ -856,20 +856,26 @@ class _MinimalHomeState extends State<MinimalHome> {
 
         // 4) Inserir as páxinas de ÍNDICE coas ligazóns
         setState(() => _progress = 0.45);
-        String mergedWithToc;
-        try {
-          mergedWithToc = await insertTocAtBeginning(
-            inputPath: mergedOCR,
-            titles: _titles,
-            pageCounts: _pageCounts,
-          );
-          // Sobrescribe mergedRaw co novo con índice
-          await File(mergedWithToc).copy(mergedFinal);
-          _logAdd('Índice inserido correctamente.');
-        } catch (e, st) {
-          _logAdd('Erro creando índice TOC: $e\n$st');
-          _endModal(ok: false);
-          return;
+        if (_settings.createToc) {
+          String mergedWithToc;
+          try {
+            mergedWithToc = await insertTocAtBeginning(
+              inputPath: mergedOCR,
+              titles: _titles,
+              pageCounts: _pageCounts,
+            );
+            // Sobrescribe mergedRaw co novo con índice
+            await File(mergedWithToc).copy(mergedFinal);
+            _logAdd('Índice inserido correctamente.');
+          } catch (e, st) {
+            _logAdd('Erro creando índice TOC: $e\n$st');
+            _endModal(ok: false);
+            return;
+          }
+        } else {
+          // Se non se crea índice, o "final" é o OCR tal cal
+          await File(mergedOCR).copy(mergedFinal);
+          _logAdd('Axustes: "Crear índice" desactivado → omitindo TOC.');
         }
 
         // 5) Límite final e gardar

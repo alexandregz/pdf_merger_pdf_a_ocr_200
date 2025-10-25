@@ -14,6 +14,8 @@ class AppSettings {
   final bool logStdout;                // stdout ocrmypdf
   final bool logStderr;                // stderr ocrmypdf
   final bool enableOcrmypdf;           // habilitar/deshabilitar uso ocrmypdf
+  final bool createToc;                // crear tabla de contidos
+
 
 
   const AppSettings({
@@ -26,6 +28,7 @@ class AppSettings {
     this.logStdout = true,      // por defecto activado
     this.logStderr = true,      // para primeiras versions empregadas por users saco todo output, despois a quitar
     this.enableOcrmypdf = true,
+    this.createToc = true,
   });
 
   AppSettings copyWith({
@@ -38,6 +41,7 @@ class AppSettings {
     bool? logStdout,
     bool? logStderr,
     bool? enableOcrmypdf,
+    bool? createToc,
   }) {
     return AppSettings(
       ocrMode: ocrMode ?? this.ocrMode,
@@ -49,6 +53,7 @@ class AppSettings {
       logStdout: logStdout ?? this.logStdout,
       logStderr: logStderr ?? this.logStderr,
       enableOcrmypdf: enableOcrmypdf ?? this.enableOcrmypdf,
+      createToc: createToc ?? this.createToc,
     );
   }
 
@@ -97,6 +102,7 @@ class AppSettings {
         'logStdout': logStdout,
         'logStderr': logStderr,
         'enableOcrmypdf': enableOcrmypdf,
+        'createToc': createToc,
       };
 
   static AppSettings fromJson(Map<String, Object?> map) {
@@ -118,6 +124,7 @@ class AppSettings {
       logStdout: (map['logStdout'] as bool?) ?? true,
       logStderr: (map['logStderr'] as bool?) ?? false,
       enableOcrmypdf: (map['enableOcrmypdf'] as bool?) ?? false,
+      createToc: (map['createToc'] as bool?) ?? true, 
     );
   }
 }

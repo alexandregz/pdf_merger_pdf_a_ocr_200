@@ -67,7 +67,7 @@ class _SettingsPageState extends State<SettingsPage> {
           Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // --- NOVO: interruptor para activar/desactivar OCRmyPDF ---
+              // --- NOVO: checkbox para activar/desactivar OCRmyPDF ---
               SwitchListTile.adaptive(
                 title: const Text('Executar OCRmyPDF'),
                 subtitle: const Text(
@@ -167,7 +167,21 @@ class _SettingsPageState extends State<SettingsPage> {
 
           const Divider(height: 32),
 
-          // ← NOVO: checkbox conservar log
+          // crear TOC
+          CheckboxListTile(
+            title: const Text('Crear índice'),
+            subtitle: const Text('Inserir páxinas de índice con ligazóns ao comezo'),
+            value: _settings.createToc,
+            onChanged: (v) async {
+              final newSettings = _settings.copyWith(createToc: v ?? true);
+              await _store.save(newSettings);
+              setState(() => _settings = newSettings);
+            },
+          ),
+
+          const Divider(height: 32),
+
+          // checkbox conservar log
           CheckboxListTile(
             value: _settings.preserveLog,
             onChanged: (v) {
