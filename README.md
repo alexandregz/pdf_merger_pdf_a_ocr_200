@@ -102,7 +102,7 @@ PS C:\Users\aemen\develop\pdf_merger_pdf_a_ocr_200\inno> .\get_version.ps1
 ## Construir versionado en macos
 
 - versionar co `pubspec.yaml`
-- executar `create_dmg/build_dmg.sh`
+- executar `bash create_dmg/build_dmg.sh`
 
 ```bash
 alex@vosjod:~/Development/flutter/pdf_merger_pdf_a_ocr_200 (main)$ bash create_dmg/build_dmg.sh
