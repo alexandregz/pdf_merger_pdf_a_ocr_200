@@ -1,9 +1,9 @@
 {
-  "latest": "1.0.4",
-  "notes": "Crea indice con ligazons",
+  "latest": "1.0.5",
+  "notes": "Podese non crear indice ao non seleccionalo en Axustes",
   "assets": {
-    "windows": "https://tereborace.com/CIG/CombinadorPDFs/CIG-CombinadorPDF-Setup-1.0.4.exe",
-    "macos_old_local": "http://127.0.0.1:7000/CIG-CombinadorPDF-1.0.4.dmg",
-    "macos": "https://tereborace.com/CIG/CombinadorPDFs/CIG-CombinadorPDF-1.0.4.dmg"
+    "windows": "https://tereborace.com/CIG/CombinadorPDFs/CIG-CombinadorPDF-Setup-1.0.5.exe",
+    "macos_old_local": "http://127.0.0.1:7000/CIG-CombinadorPDF.dmg",
+    "macos": "https://tereborace.com/CIG/CombinadorPDFs/CIG-CombinadorPDF-1.0.5.dmg"
   }
 }
